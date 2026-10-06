@@ -209,6 +209,35 @@ def main(argv=None):
     rep.add("B1", "基线表与 frontmatter documents 的文档集合一致", FAIL, not diff,
             "不一致：%s" % "、".join(diff[:6]) if diff else "%d 份文档两处一致" % len(fm_docs))
 
+
+    # C4：provenance / evidenceGrade 的存放位置**单源一致**（用户使用中发现的跨文件矛盾）
+    se_txt = read(os.path.join(ROOT, "contracts", "S-data-envelope.md")) if os.path.isfile(
+        os.path.join(ROOT, "contracts", "S-data-envelope.md")) else ""
+    problems4 = []
+    if "旁车" not in se_txt:
+        problems4.append("S-data-envelope.md 未声明旁车规则（权威缺失）")
+    if "provenance" in skill:
+        if "contracts/S-data-envelope.md" not in skill:
+            problems4.append("SKILL.md 提到 provenance 但未指向权威 `contracts/S-data-envelope.md`")
+        if "旁车" not in skill:
+            problems4.append("SKILL.md 提到 provenance 但未说明「旁车文件」")
+    # 冲突扫描：任何文件的该行若声称 provenance 进 JSON/记录内，且未含旁车/不得/sidecar 限定 → 冲突
+    for rel in ["SKILL.md", "README.md", "CHANGELOG.md", "COMPAT.md"] + \
+               ["contracts/" + f for f in sorted(files)]:
+        p = os.path.join(ROOT, rel.replace("/", os.sep))
+        if not os.path.isfile(p):
+            continue
+        for i, line in enumerate(read(p).splitlines(), 1):
+            if "provenance" in line or "evidenceGrade" in line:
+                risky = ("每块带" in line) or ("记录内" in line and "不得" not in line) or \
+                        ("JSON 里" in line and "不得" not in line)
+                ok_marker = ("旁车" in line) or ("sidecar" in line.lower()) or ("不得" in line) or \
+                            ("S-data-envelope" in line)
+                if risky and not ok_marker:
+                    problems4.append("%s:%d 疑似与旁车规则冲突" % (rel, i))
+    rep.add("C4", "provenance / evidenceGrade 存放规则单源一致", FAIL, not problems4,
+            "；".join(problems4[:5]) if problems4 else "单源一致（权威：S-data-envelope.md §3）")
+
     # K1
     size = os.path.getsize(skill_p)
     ctotal = sum(os.path.getsize(os.path.join(cdir, f)) for f in files)

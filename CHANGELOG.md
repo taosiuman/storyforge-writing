@@ -4,6 +4,10 @@
 
 ## v0.2.1 — 2026-10-06
 
+- **修复跨文件规则矛盾（用户使用中发现）**：`SKILL.md` §五 曾写「每块带 provenance（在 JSON 里）」，与 `S-data-envelope.md` §3 的「必须放旁车文件」冲突。
+  现统一以 **`contracts/S-data-envelope.md` §3 为唯一权威**（旁车文件），`SKILL.md` 改为指向它；
+  并新增检查器断言 **`C4`**（provenance 存放规则单源一致）防止复发。
+
 - 新增 `skill-card.md`（ClawHub 的 `verify` 曾报 `card.missing`：卡片文件此前不存在；
   内容含诚实的已知风险与缓解措施）
 - 说明：`verify` 的安全判定为 **clean / benign**（confidence: high）—— 本技能不包含隐藏安装钩子、

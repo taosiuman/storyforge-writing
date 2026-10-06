@@ -182,14 +182,16 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
    - `OBSERVED`：由**实际检查过的**源文件/原文直接支持（给出文件与偏移/行号）
    - `INFERRED`：由已有事实推导（须写推导链，作者可复核）
    - `UNKNOWN`：无来源支持 → **必须标为 UNKNOWN 或留空**，禁止编造补全
-   “主张与证据等量”：一句主张配一条证据；provenance 必须逐块标注（来源 md + revision + contentHash）。
+   “主张与证据等量”：一句主张配一条证据；provenance 必须**逐块**标注（来源 md + revision + contentHash）—— 落在**旁车文件**中，存放位置以 `contracts/S-data-envelope.md` §3 为准。
    > 素材来源：`H:\StoryForge-master\docs\ai\anti-hallucination.md`（**辅助来源**，非数据契约基线）。
 
 7. **完整复刻边界**：本 skill 复刻"创作语料 + 数据契约 + SOP"，**不**复刻 StoryForge 的浏览器 IndexedDB 运行时与产品引擎。
 
 ## 五、产物形态（与 StoryForge 对齐）
 
-- **框架语料 JSON**：按字段闭集生成，`projects/<项目>/storyforge-framework.json`，每块带 provenance（来源 md + revision + contentHash）。
+- **框架语料 JSON**：按字段闭集生成，`projects/<项目>/storyforge-framework.json` —— **JSON 主体只含字段闭集内的键**；
+  **provenance（来源 md + revision + contentHash）与 `evidenceGrade` 放旁车文件** `storyforge-framework.provenance.json`（**逐块**标注）。
+  > ⚠️ **存放位置的唯一权威**：`contracts/S-data-envelope.md` §3。**不得**把 provenance / evidenceGrade 塞进 JSON 记录内 —— 应用导入走**精确键集**，多余键会被**直接拒收**。
 - **长篇试点**：`projects/长铗传/storyforge-framework.json`（首个闭环验证）。
 - **导入**：用户在 StoryForge `/long` 作品库执行导入（浏览器本地，agent 不代操作）。
 
@@ -206,7 +208,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 4. 按字段闭集生成框架语料（候选态，非 Canon）
 5. 交付用户确认/采纳；采纳后更新一致性（事实/伏笔/时间线/角色状态）
 6. 对齐基线：确认所依据的源文档版本与上表一致（不一致先停下问，不按记忆推进）
-7. 验证：字段完整、provenance 齐全（含证据分级标注）、stale 检查通过、无越类（B/C 只视觉化/后期侧）
+7. 验证：字段完整、**旁车 provenance 齐全**（含证据分级标注）、stale 检查通过、无越类（B/C 只视觉化/后期侧）
 8. 交付前跑 `python scripts/check_consistency.py`（应为 0 fail）
 
 ## 子契约文件（按需读取）
