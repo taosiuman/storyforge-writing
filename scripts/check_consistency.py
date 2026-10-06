@@ -131,6 +131,17 @@ def main(argv=None):
     rep.add("R2", "每个契约都在路由表或横切契约块中（无孤儿）", FAIL, not orphan,
             "孤儿：%s" % "、".join(orphan) if orphan else "%d 个契约均被路由" % len(files))
 
+
+    # R3：references/ 下每个文件都必须被入口引用（防孤儿参考——seedancer 的教训）
+    refdir = os.path.join(ROOT, "references")
+    orphan_ref = []
+    if os.path.isdir(refdir):
+        for f in sorted(os.listdir(refdir)):
+            if f.endswith(".md") and f != "INDEX.md" and f not in skill:
+                orphan_ref.append("references/" + f)
+    rep.add("R3", "references/ 下无孤儿（均被入口引用）", FAIL, not orphan_ref,
+            "孤儿：%s" % "、".join(orphan_ref) if orphan_ref else "无孤儿")
+
     # L1
     dead = []
     for path in [skill_p] + [os.path.join(cdir, f) for f in sorted(files)]:

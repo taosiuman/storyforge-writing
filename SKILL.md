@@ -220,6 +220,8 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 - `contracts/B-motion-drama.md` — 漫剧前期：系列圣经·逐集·分镜·Image/Video Prompt IR
 - `contracts/C-post.md` — 漫剧后期：prompt 包 → 达芬奇〔环境来源〕/生成管线对接
 > **横切契约（不属任何单一产品，全部产品适用）**：`contracts/S-data-envelope.md`
+>
+> **横切参考**：`references/schema-tables.md` — **表 / 字段参考**（机械生成自上游 `src/lib/db/schema.ts` 与 `src/lib/types/*.ts`）：写语料前查表名、索引字段与字段类型；**AI 可写字段**以 `FIELD_REGISTRY` 为准。
 
 - `contracts/C-screenplay.md` — 小说转剧本：改编 Brief·Beat·Scene Card·场次 AST·版本与导出（v0.2.0 新增）
 - `contracts/A-world-engine.md` — 世界引擎：worldCode·WorldRelease 字段闭集·能力画像·数据出口·分享包（v0.2.0 新增）
