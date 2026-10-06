@@ -6,7 +6,7 @@ description: >-
   漫画分镜/漫剧 prompt 包（B 类）、漫剧后期对接生成管线（C 类）。
   使用场景（含「小说转剧本/剧本改编」「世界封存/世界引擎/世界出口包」「生成可导入语料」）：用户要求"按 StoryForge 框架写长篇/短篇/剧本/漫画/漫剧/AVG/跑团"、
   "生成框架语料"、"按写作 SOP 推进"、"对齐 StoryForge 数据契约"。
-version: 0.2.0
+version: 0.2.1
 license: MIT
 compatibility: >-
   电影大师 agent 专属 H 类知识资产。依赖 projects/<项目>/ 已有 md 设定资产与
