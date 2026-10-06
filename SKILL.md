@@ -225,7 +225,9 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 
 ## 来源与验证
 
-### 基线（v0.2.0 重钉为逐文档版本）
+> **本技能版本**：v0.2.1（2026-10-06）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（13 项断言）。
+
+### 基线
 
 | 文档 | 版本 | 日期 |
 | --- | --- | --- |
