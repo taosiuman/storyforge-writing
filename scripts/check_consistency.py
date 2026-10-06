@@ -121,10 +121,15 @@ def main(argv=None):
     rep.add("R1", "路由表引用的契约都存在（解析表格行 + 集合精确）", FAIL, not ghost,
             "幽灵契约：%s" % "、".join(ghost) if ghost else "全部存在（%d 个）" % len(routed))
     # 横切契约：必须在显式声明的块里（标题含「横切契约」），而不是任意 bullet
-    cross = set()
-    m_cross = re.search(r"(?ms)^\s*>?\s*\*\*横切契约[^\n]*\n(.*?)(?=\n\n|\Z)", skill)
-    if m_cross:
-        cross = {m for m in CONTRACT_REF.findall(m_cross.group(1))}
+    # 行式收集：从含「横切契约」的行开始，连同**该行本身**直到空行 —— 不依赖跨行正则
+    cross, collecting = set(), False
+    for line in skill.splitlines():
+        if "横切契约" in line:
+            collecting = True
+        elif collecting and not line.strip():
+            break
+        if collecting:
+            cross |= {m for m in CONTRACT_REF.findall(line)}
     listed = cross
     routed_all = routed | listed
     orphan = sorted(files - routed_all)
