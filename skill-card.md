@@ -37,7 +37,7 @@ Mitigation: The baseline is recorded per document (with versions), `scripts/chec
 **Other Properties Related to Output:** [Candidates only; output is delivered as files and depends on no application runtime, and the JSON it produces is deliberately NOT a backup package (no `version` field).] <br>
 
 ## Skill Version(s): <br>
-0.3.2 <br>
+0.3.3 <br>
 
 ## Ethical Considerations: <br>
 Users should review generated candidates before adopting them, respect third-party rights when referencing real people, franchises or brands, and apply their own data-protection and compliance requirements before uploading any media to external services. <br>

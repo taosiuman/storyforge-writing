@@ -6,7 +6,7 @@ description: >-
   漫画分镜/漫剧 prompt 包（B 类）、漫剧后期对接生成管线（C 类）。
   使用场景（含「小说转剧本/剧本改编」「世界封存/世界引擎/世界出口包」「生成框架语料」）：用户要求"按 StoryForge 框架写长篇/短篇/剧本/漫画/漫剧/AVG/跑团"、
   "生成框架语料"、"按写作 SOP 推进"、"对齐 StoryForge 数据契约"。
-version: 0.3.2
+version: 0.3.3
 license: MIT
 compatibility: >-
   电影大师 agent 专属 H 类知识资产。依赖 projects/<项目>/ 已有 md 设定资产与
@@ -220,15 +220,16 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 - `contracts/A-characters.md` — 角色卡/人设/记忆/禁区
 - `contracts/A-interactive.md` — AVG/文字冒险/跑团：场景树·分支·对白·结局·物品·状态机
 - `contracts/B-comic.md` — 漫画：分镜脚本·页·格·视觉主体卡
-- `contracts/B-motion-drama.md` — 漫剧前期：系列圣经·逐集·分镜·Image/Video Prompt IR
+- `contracts/B-motion-drama.md` — 漫剧素材前期：系列圣经·逐集·分镜·Image/Video Prompt IR
 - `contracts/C-post.md` — 漫剧后期：prompt 包 → 达芬奇〔环境来源〕/生成管线对接
 > **横切契约（不属任何单一产品，全部产品适用）**：`contracts/S-data-envelope.md`
 >
 > **横切参考（机械生成的派生索引，与源码不一致时以源码为准）**：
 >
 > - `references/schema-tables.md` — **表 / store 规格 / 字段清单**（源自 `src/lib/db/schema.ts`、`src/lib/types/*.ts`、`json-export.ts`）：
->   写语料前查表名、索引字段与字段类型。**§1** 重点表逐字段表格 · **§2** 全表 store 索引（123 张）·
+>   写语料前查表名、索引字段与字段类型。**§2** 全表 store 索引（123 张，**表名与 store 的单一来源**）·
 >   **§4 全表字段清单（106 表 / 1734 项，含取值域 `⟨…⟩` 与导出 `Omit` 标注）**。
+>   （**§1 已去重为空存根**：原 21 张重点表详情已被 §2 + §4 完全覆盖，见该文件 §1 说明。）
 > - `references/field-registry.md` — **AI 可写字段**（源自 `src/lib/registry/field-registry.ts` 与 `adoption-schema.ts`）：
 >   64 张表 / 528 项可写字段 + 25 项「AI 生成启用」子集 + 53 张集合表的写回策略（identity/去重/必需/盖章）。
 >   **未登记即被运行时拒绝**（`unknown_write_field`）—— 写语料前必须核对本表。
@@ -239,7 +240,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 
 ## 来源与验证
 
-> **本技能版本**：v0.3.2（2026-10-07）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（19 项断言）；产物合规性由 `scripts/check_framework_artifact.py` 校验（6 类契约违规）。
+> **本技能版本**：v0.3.3（2026-10-07）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（19 项断言）；产物合规性由 `scripts/check_framework_artifact.py` 校验（6 类契约违规）。
 
 ### 基线
 

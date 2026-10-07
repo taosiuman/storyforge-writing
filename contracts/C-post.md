@@ -13,7 +13,7 @@
 ## 1. C 类职责边界
 
 **C 类只做**：
-- 接收 B 类（漫剧前期）的 **版本化 prompt 包 + 参考帧 + capability profile**
+- 接收 B 类（漫剧素材前期）的 **版本化 prompt 包 + 参考帧 + capability profile**
 - 调用生成管线（Seedance/达芬奇〔环境来源〕 MCP 三服务器）产出图/视频/素材
 - 生成结果回填媒资（blob + contentHash + 权利 + provider receipt）
 - 剪辑/调色/混音/成片（达芬奇〔环境来源〕 MCP 15 条铁律范围内）

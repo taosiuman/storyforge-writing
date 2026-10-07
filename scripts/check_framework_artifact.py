@@ -15,9 +15,11 @@
 v1（2026-10-07）：由电影大师在长铗传 v0.3.0 → v0.3.1 修复过程中编写，
   后由技能开发 agent 提升进技能包。覆盖 6 类契约违规（FK 类型 / 必需字段 /
   枚举闭集 / 顶层结构 / 旁车结构 / context-manifest）+ FK 悬挂警告。
+v3（2026-10-07，大扫除 P1）：表名来源改为 **§2 单源** —— 原先额外做了一次**全文**
+  标题扫描，任何 `### <反引号>非表名` 都会被当成合法表（**假 PASS**）；且 §2 定位
+  硬编码、标题改形时静默退化。现改为节号/关键词正则定位，找不到 §2 或自述张数
+  不符即报错并退出 2。
 """
-from __future__ import annotations
-
 import json
 import os
 import re
@@ -52,28 +54,43 @@ def parse_registry():
     return spec
 
 
-def parse_schema_tables():
-    """从 references/schema-tables.md 解析全部表名（123 张）。
+def _strip_noise(s):
+    """剥离围栏代码块与 HTML 注释（防正文样例被当作真标题）。"""
+    s = re.sub(r"```.*?```", "", s, flags=re.S)
+    return re.sub(r"<!--.*?-->", "", s, flags=re.S)
 
-    **v2 修正（U2 `REV-20261007-030` F2）**：索引表里有两张表的 store 定义**不以 `++id` 开头**
-    （`importFiles` / `referenceAnalysisSources`），旧正则只认 `++id` 前缀 → 实得 **121 ≠ 123**，
-    产物若用这两表会被**误报**假 ERROR。现改为在 §2 全文按"表格行"解析，并保留 §1 标题回退。
+
+def parse_schema_tables():
+    """从 references/schema-tables.md 的 **§2「全部表索引」** 解析全部表名（**单一来源**）。
+
+    **v3（大扫除 P1）修正**：旧版在 §2 表格行之外**又做了一次全文** `### <反引号>表名`
+    标题扫描，两个后果 ——
+      ① 任何形如 `### <反引号>非表名` 的标题都会被当成**合法表名**
+         （实测：注入假标题后产物用该名**不报错** = **假 PASS**）；
+      ② §2 定位用硬编码 `split("## 2.")`，标题改形时**静默退化为全文扫描**。
+    现改为：**§2 单源** + 节号/关键词正则定位 + **找不到即报错**（不静默）；
+    并额外返回标题自述的张数，供调用方核对（"123" 不再是不可验证的宣称）。
     """
     st_path = os.path.join(SKILL_ROOT, "references", "schema-tables.md")
     if not os.path.isfile(st_path):
         print(f"错误：找不到 {st_path}", file=sys.stderr)
-        return set()
-    sc = open(st_path, encoding="utf-8").read()
-    # §2 索引表：任意形状的 store 定义行 | `tableName` | `store 定义` |
-    if "## 2." in sc:
-        sec2 = sc.split("## 2.", 1)[1]
-        sec2 = sec2.split("## 3.", 1)[0] if "## 3." in sec2 else sec2
-    else:
-        sec2 = sc
+        return set(), None
+    sc = _strip_noise(open(st_path, encoding="utf-8").read())
+    # 必须**唯一**命中：否则可被"在真 §2 之前插入伪造同名节"旁路
+    # （`REV-20261007-034` M-bypass：取首个匹配 → 伪表名假 PASS、真表名假红）。
+    cands = [mm for mm in re.finditer(r"^##[ \t\u3000]*[2２][ \t\u3000]*[.、．][^\n]*$", sc, re.M)
+             if "全部表索引" in mm.group(0)]
+    if len(cands) != 1:
+        print("错误：schema-tables.md 的「§2 全部表索引」节命中 %d 个（应为 1）—— 表名来源不可信"
+              % len(cands), file=sys.stderr)
+        return set(), None
+    head = cands[0]
+    rest = sc[head.end():]
+    nxt = re.search(r"^##[ \t\u3000]", rest, re.M)
+    sec2 = rest[:nxt.start()] if nxt else rest
     names = set(re.findall(r"^\|\s*`([A-Za-z0-9_]+)`\s*\|\s*`[^`]+`\s*\|\s*$", sec2, re.M))
-    # §1 详细表：每节形如 ### `tableName`（回退，防 §2 缺行）
-    names |= set(re.findall(r"^\s*### `([A-Za-z0-9_]+)`", sc, re.M))
-    return names
+    mtxt = re.search(r"（\**(\d+)\s*张", head.group(0))
+    return names, (int(mtxt.group(1)) if mtxt else None)
 
 
 def check(path, spec, schema_tables):
@@ -211,8 +228,15 @@ def main():
         return 2
     
     spec = parse_registry()
-    schema_tables = parse_schema_tables()
+    schema_tables, declared_tables = parse_schema_tables()
     print("registry tables: %d | schema index tables: %d" % (len(spec), len(schema_tables)))
+    # v3（大扫除 P1）：表名来源必须可信 —— 缺失或与 §2 标题自述不符时，产物判定不可依赖。
+    # 自述张数缺失也算不可信：否则删掉标题里的「（N 张）」即可让交叉核对**静默跳过**
+    # （`REV-20261007-034` 弱化项）。
+    if not schema_tables or declared_tables is None or declared_tables != len(schema_tables):
+        print("ERROR: schema-tables.md §2 表名来源不可信（自述 %s 张 / 实际解析 %d 张；自述缺失亦不可信）"
+              "—— 校验未完成" % (declared_tables, len(schema_tables)), file=sys.stderr)
+        return 2
     
     # **v2 修正（U4 `REV-20261007-031` #1）**：路径不存在曾抛未捕获 FileNotFoundError，
     #   且退出码 1 与"业务 FAIL"同码 → 外部无法区分。现归为**环境错误**：友好提示 + 退出码 2。

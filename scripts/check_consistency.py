@@ -30,8 +30,6 @@ v2/v3 相对 v1 的修复（依据 REV-20261005-018 的"可绕过清单"）：
 L2 只认 `references|contracts|scripts` 三类**本地前缀**，裸文件名与上游路径（`src/`、`docs/`）不在其内。
 """
 
-from __future__ import annotations
-
 import io
 import json
 import os
@@ -69,7 +67,7 @@ ANCHORS = {
     "B-motion-drama.md": ["物料", "Prompt IR", "不静默忽略"],
     "C-post.md": ["交接", "完成门"],
     "C-screenplay.md": ["忠实保留", "合理改编", "新增假设", "不可变剧本版本"],
-    "S-data-envelope.md": ["PROJECT_TABLES", "CURRENT_BACKUP_VERSION", "待实测", "旁车"],
+    "S-data-envelope.md": ["PROJECT_TABLES", "CURRENT_BACKUP_VERSION", "精确键集", "旁车"],
 }
 MIN_LINES = 12
 MIN_CHARS = 800
@@ -324,7 +322,8 @@ def main(argv=None):
             x1_bad = sorted(set(fr_tables) - set(st_rows))
 
             # §4（全表字段清单，v0.3.2 新增）：自述表数 = 实际小节数；表名 ⊆ §2；无重复名
-            #   守护理由：§4 是**机械生成**的（`work/regen_sec4_fields.py`）；上游更新后
+            #   守护理由：§4 是**机械生成**的（生成器 `work/regen_sec4_fields.py` 已被另一会话清理误删、
+#   不可恢复 —— 见 `INC-20261007-001`；**§4 当前不可重生成**，任何手改必须靠本断言兜住）；上游更新后
             #   若只重生成一半、或只改自述不改内容，这里会报红。
             h4, body4 = _section(st_clean, r"[4４]", "全表字段清单")
             if h4 is None:

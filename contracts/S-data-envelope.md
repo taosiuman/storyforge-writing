@@ -93,7 +93,7 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```jsonc
 {
-  "storyforgeFramework": "0.3.2",     // 本技能版本（非备份版本）
+  "storyforgeFramework": "0.3.3",     // 本技能版本（非备份版本）
   "baseline": { "docs/DATA-GOVERNANCE.md": "v1.8.0", "docs/products/LONGFORM-AND-NODE.md": "v1.6.0" },
   "blocks": [
     { "table": "characters",          // 表名必须 ∈ PROJECT_TABLES 派生清单
@@ -110,7 +110,7 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```json
 {
-  "storyforgeFramework": "0.3.2",
+  "storyforgeFramework": "0.3.3",
   "generatedAt": "2026-10-07",
   "generator": "电影大师 / storyforge-writing",
   "hashAlgorithm": "sha256",
@@ -165,5 +165,5 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 - [ ] 每个 `table` 来自 `PROJECT_TABLES` 派生清单
 - [ ] 每条记录字段不超出闭集
 - [ ] **provenance 与 evidenceGrade 在旁车文件**，不混入候选记录
-- [ ] 交付说明列出所有 `待实测` 项与取得方法
+- [x] 交付说明列出未定项与取得方法（**当前：无遗留**，见 §5）
 - [x] 产物以文件交付为终点：**不依赖任何应用的导入 / 运行时**
