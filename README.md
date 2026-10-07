@@ -42,11 +42,20 @@
 ## 校验
 
 ```bash
-python scripts/check_consistency.py     # 期望：RESULT: PASS (0 fail, 0 warn)
+python scripts/check_consistency.py     # 技能包自检（19 项）；期望：RESULT: PASS (0 fail, 0 warn)
+python scripts/check_framework_artifact.py <framework.json>   # 产物校验；期望：TOTAL ERRORS: 0
 ```
 
-13 项断言：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径 /
-裁剪三态术语 / 证据分级规则句 / 环境来源逐行标注 / 契约锚点 / 契约实质下限 / 基线自洽 / 体积预算。
+**两个校验器分工不同**（勿混用）：
+- `check_consistency.py` —— 校验**技能包自身**（SKILL.md / contracts / references 的文档一致性）。
+- `check_framework_artifact.py` —— 校验**生成产物**（framework.json 是否符合字段/枚举/外键契约）。
+  覆盖 6 类违规：FK 字段类型（必须 number）/ 必需字段（`id` + `projectId`）/ 枚举闭集 /
+  顶层结构（无 `version` 字段）/ 旁车结构（`blockProvenance` 必须是 list）/ `context-manifest.json` 存在性。
+
+19 项断言（摘要，非穷举）：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径（链接）/
+被引用本地文件存在性（含反引号）/ 横切参考交叉一致 / 参考文件自述计数 / 裁剪三态术语 /
+证据分级规则句 / 环境来源逐行标注 / 契约锚点 / 契约实质下限 / 基线自洽 /
+provenance 单源 / 体积预算 / 版本与断言数自洽。
 
 ## 三个必须知道的硬事实
 
@@ -59,7 +68,9 @@ python scripts/check_consistency.py     # 期望：RESULT: PASS (0 fail, 0 warn)
 ## 已知限制
 
 见 [`COMPAT.md`](COMPAT.md) §5 与 `scripts/check_consistency.py` 顶部说明。摘要：
-JSON 信封的部分字段仍需一次真实导出样本；各表完整字段与取值域需读上游 `src/lib/db/schema.ts`；
+JSON 信封的部分字段仍需一次真实导出样本；重点表的 TS 接口见 [`references/schema-tables.md`](references/schema-tables.md)，
+其余表仍需读上游 `src/lib/db/schema.ts`；**AI 可写字段**清单见 [`references/field-registry.md`](references/field-registry.md)
+（64 表 / 528 项，已抽取）；两份 `references/*.md` 是某一时点的机械快照，上游变更后需重生成；
 脚本不检测上游是否又更新；路由分类语义无法断言。
 
 ## 归因
@@ -72,4 +83,4 @@ JSON 信封的部分字段仍需一次真实导出样本；各表完整字段与
 
 ## 版本
 
-v0.2.0 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。
+v0.3.2 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。

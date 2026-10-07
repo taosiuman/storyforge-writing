@@ -4,14 +4,14 @@ description: >-
   StoryForge 叙事写作框架（蒸馏自 github.com/yuanbw2025/storyforge 数据契约 + 写作 SOP）。
   用于生成框架性语料并受控写作：长篇/短篇/AVG/文字冒险/角色人设/跑团世界（A 类）、
   漫画分镜/漫剧 prompt 包（B 类）、漫剧后期对接生成管线（C 类）。
-  使用场景（含「小说转剧本/剧本改编」「世界封存/世界引擎/世界出口包」「生成可导入语料」）：用户要求"按 StoryForge 框架写长篇/短篇/剧本/漫画/漫剧/AVG/跑团"、
+  使用场景（含「小说转剧本/剧本改编」「世界封存/世界引擎/世界出口包」「生成框架语料」）：用户要求"按 StoryForge 框架写长篇/短篇/剧本/漫画/漫剧/AVG/跑团"、
   "生成框架语料"、"按写作 SOP 推进"、"对齐 StoryForge 数据契约"。
-version: 0.2.1
+version: 0.3.2
 license: MIT
 compatibility: >-
   电影大师 agent 专属 H 类知识资产。依赖 projects/<项目>/ 已有 md 设定资产与
-  knowledge/ 考据库。产物为 JSON 框架语料（可导入 StoryForge /long 作品库）+
-  结构化 md。不操作浏览器 IndexedDB，导入动作由用户执行。
+  knowledge/ 考据库。产物为 JSON 框架语料 + 结构化 md。
+  **技能自足：不依赖任何外部应用的导入或运行时**；产物以文件形式交付，由作者按需处理。
 metadata:
   author: 电影大师
   source: https://github.com/yuanbw2025/storyforge
@@ -93,6 +93,8 @@ StoryForge 三个单一事实源——生成语料时必须遵守，不得手拼
    模型输出只是**候选（CreativeArtifact）**，作者确认 `adopt()` 后才进 Canon；
    采纳校验至少覆盖 6 项：field / schema / 外键 / owner / 作用域 / stale（目标变化即拒绝）。
    禁止模型输出直接写库、禁止面板私有字段映射。
+   → **逐表可写字段清单已抽取**，写语料前查 `references/field-registry.md`
+   （64 张表 / 528 项；未登记字段会被运行时以 `unknown_write_field` 拒绝）。
 3. **表生命周期**：`PROJECT_TABLES`。导出/导入/删除/迁移/作用域/引用重映射统一收口，不得各写一份表清单。
    每个表的登记应覆盖 **7 项**：owner 与作用域字段 / 是否导出·导入·分享·仅本机 / 项目·世界·作品·实例的删除行为 /
    refs·nullable·重映射与导入顺序 / 当前 schema 版本与拒绝边界 / blob 等外部对象引用与回收 / 冻结版本·session·运行账本保留策略。
@@ -193,7 +195,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
   **provenance（来源 md + revision + contentHash）与 `evidenceGrade` 放旁车文件** `storyforge-framework.provenance.json`（**逐块**标注）。
   > ⚠️ **存放位置的唯一权威**：`contracts/S-data-envelope.md` §3。**不得**把 provenance / evidenceGrade 塞进 JSON 记录内 —— 应用导入走**精确键集**，多余键会被**直接拒收**。
 - **长篇试点**：`projects/长铗传/storyforge-framework.json`（首个闭环验证）。
-- **导入**：用户在 StoryForge `/long` 作品库执行导入（浏览器本地，agent 不代操作）。
+- **交付**：产物以**文件**形式交付（技能自足，**不依赖任何应用的导入或运行时**）。
 
 ## 六、执行清单
 
@@ -210,6 +212,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 6. 对齐基线：确认所依据的源文档版本与上表一致（不一致先停下问，不按记忆推进）
 7. 验证：字段完整、**旁车 provenance 齐全**（含证据分级标注）、stale 检查通过、无越类（B/C 只视觉化/后期侧）
 8. 交付前跑 `python scripts/check_consistency.py`（应为 0 fail）
+9. **产物校验**：交付前跑 `python scripts/check_framework_artifact.py <framework.json>`（应为 0 errors）。校验器覆盖 6 类契约违规：FK 类型 / 必需字段 / 枚举闭集 / 顶层结构 / 旁车结构 / context-manifest。
 
 ## 子契约文件（按需读取）
 
@@ -221,15 +224,22 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 - `contracts/C-post.md` — 漫剧后期：prompt 包 → 达芬奇〔环境来源〕/生成管线对接
 > **横切契约（不属任何单一产品，全部产品适用）**：`contracts/S-data-envelope.md`
 >
-> **横切参考**：`references/schema-tables.md` — **表 / 字段参考**（机械生成自上游 `src/lib/db/schema.ts` 与 `src/lib/types/*.ts`）：写语料前查表名、索引字段与字段类型；**AI 可写字段**以 `FIELD_REGISTRY` 为准。
+> **横切参考（机械生成的派生索引，与源码不一致时以源码为准）**：
+>
+> - `references/schema-tables.md` — **表 / store 规格 / 字段清单**（源自 `src/lib/db/schema.ts`、`src/lib/types/*.ts`、`json-export.ts`）：
+>   写语料前查表名、索引字段与字段类型。**§1** 重点表逐字段表格 · **§2** 全表 store 索引（123 张）·
+>   **§4 全表字段清单（106 表 / 1734 项，含取值域 `⟨…⟩` 与导出 `Omit` 标注）**。
+> - `references/field-registry.md` — **AI 可写字段**（源自 `src/lib/registry/field-registry.ts` 与 `adoption-schema.ts`）：
+>   64 张表 / 528 项可写字段 + 25 项「AI 生成启用」子集 + 53 张集合表的写回策略（identity/去重/必需/盖章）。
+>   **未登记即被运行时拒绝**（`unknown_write_field`）—— 写语料前必须核对本表。
 
 - `contracts/C-screenplay.md` — 小说转剧本：改编 Brief·Beat·Scene Card·场次 AST·版本与导出（v0.2.0 新增）
 - `contracts/A-world-engine.md` — 世界引擎：worldCode·WorldRelease 字段闭集·能力画像·数据出口·分享包（v0.2.0 新增）
-- `contracts/S-data-envelope.md` — 数据契约与 JSON 导入/导出信封（v0.2.0 新增；含**待实测项**）
+- `contracts/S-data-envelope.md` — 数据契约与 JSON 导入/导出信封（v0.2.0 新增；**v0.3.2 起无遗留待实测项**，见该文件 §5）
 
 ## 来源与验证
 
-> **本技能版本**：v0.2.1（2026-10-06）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（13 项断言）。
+> **本技能版本**：v0.3.2（2026-10-07）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（19 项断言）；产物合规性由 `scripts/check_framework_artifact.py` 校验（6 类契约违规）。
 
 ### 基线
 

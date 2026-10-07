@@ -2,6 +2,153 @@
 
 本项目版本独立于上游 StoryForge 的版本号；上游基线以**逐文档版本**记录（见 `SKILL.md`《来源与验证》）。
 
+## v0.3.2 — 2026-10-07
+
+### 定位澄清：**技能不再依赖任何应用**（用户裁定）
+- 用户明确：「本技能**不再依赖任何应用**；语料只当写作素材」。
+- 据此修正文档里 **11 处**"依赖应用"的表述（此前写作"可导入 StoryForge /long 作品库""导入由用户在应用内执行"）：
+  `SKILL.md` ×3（使用场景 / compatibility / **§五 导入行**）· `contracts/S-data-envelope.md` ×3（§3 对比表 / **§5 导入路径项** / §6 交付清单）·
+  `CHANGELOG.md` ×1（v0.2.1 条目的一处标注）· `skill-card.md` ×4（Canon ×2 / application ×2）。
+  > 其中 **2 处漏网**（`SKILL.md` §五、`S-data-envelope.md` §5）由独立复审 `REV-20261007-032` 抓出并补修。
+- **未改**：技能"蒸馏自 StoryForge 仓库的契约"这一**归因**（那是事实与许可要求）。
+
+### 数据契约补全（TD-5a / TD-5b）
+- **新增 `schema-tables.md` §4「全表字段清单」**（**机械抽取**，生成器 `work/regen_sec4_fields.py`）：
+  **106 表 / 1734 项字段**，每表标注接口名、字段数、**导出 `Omit` 差异**；96 个字段带**取值域** `⟨…⟩`（枚举闭集）。
+  **已知缺口（如实标注）**：其中 **4 张表未解析出字段**（上游为交叉类型别名，或接口不在 `src/lib/types/`）——
+  这 4 张表在 §4 内**逐表标注**"未解析到字段，请直接读源文件（本节不推断）"，**非**全覆盖。
+  来源：`json-export.ts` 的 `ProjectExportData`（权威「表→TS 类型」映射）+ `src/lib/types/*.ts`（含继承链展开）。
+- **新增 `S-data-envelope.md` §1.1「精确键集」**：`project` 9 允许/5 必需 · `works[]` 23/17 · `worlds[]` 9/8，
+  另 8 条预检约束，**逐条带行号出处**（`backup-trust.ts`）。
+- **新增断言守护**（`check_consistency.py` 的 `X2` 扩展）：§4 自述表数 = 实际小节数；
+  §4 表名必须都在 §2 表清单内（防"生成器把非表键当表写"，如 `version`/`project`）；§4 无重复表名。
+  **首版守护被独立对抗单元证伪**（`REV-20261007-033`：27 变异 → **11 漏网 + 2 假红**），据此重写：
+  ① **不硬编码节号字面量**（旧版 `split("## 4.")` 在标题改形时**整段守卫静默跳过**）→ 改节号+关键词正则定位，**找不到即报错**；
+  ② 小节正则**容忍空白**（`###  \`x\`` / 前导缩进 / 全角空格在 CommonMark 下均为合法 H3）；
+  ③ 先**剥离围栏代码块与 HTML 注释**（防"样例被当真"假红）；④ 标题级别放宽到 3–6 级（防 `####` 藏假表名）。
+  配 **12 例自测**（`generated/_selftest_sec4.py`：正例 + 10 反例 + 1 容忍例），全部符合期望。
+
+### 关闭项（用户裁定）
+- **TD-5c 关闭**：媒资（图片）在备份包里的表示 —— 属《长铗传》项目的额外需求、由其它技能承担，与本技能无关。
+- **TD-5d 关闭**：语料导入路径 —— 用户裁定选 (b)，技能不依赖应用，**不写转换器**。
+
+## v0.3.1 — 2026-10-07
+
+### 新增产物级校验器（电影大师实战反馈）
+- **新增 `scripts/check_framework_artifact.py`**：校验生成的 framework.json 是否符合契约。
+  覆盖 6 类违规：FK 字段类型（必须 number）/ 必需字段（id + projectId）/ 枚举闭集 / 顶层结构（无 version 字段）/ 旁车结构（blockProvenance 必须是 list）/ context-manifest 存在性。
+  由电影大师在长铗传 v0.3.0 → v0.3.1 修复过程中编写，后提升进技能包。
+- **新增 `field-registry.md` §4 "只读表"章节**：说明 `temporalFacts` 和 `narrativeSummaryNodes` 两张表为什么没有 FIELD_REGISTRY 条目（由系统自动生成，AI 不可写）。
+- **明确 `S-data-envelope.md` §3 旁车文件结构**：`blockProvenance` 必须是 list（不是 dict），每项必须有 5 个字段（table / recordCount / contentHash / evidenceGrade / sources）。
+
+### 检查器修复
+- **X2 断言边界修复**：`§3` 的切分原为"取到 EOF"，加入 §4 后会把只读表两行算进 §3（53 ≠ 55 误报）；
+  现改为"取到**下一个二级标题**之前"（不硬编码节号）。配 4 例自测（`generated/_selftest_x2.py`，含 2 反例 1 对照）。
+
+### 契约矛盾澄清
+- **`knowledgeLedger.factId → temporalFacts`**：FK 指向的表无 FIELD_REGISTRY 条目。这是上游 StoryForge 的设计决策（temporalFacts 由系统生成），不是技能缺陷。AI 生成时通常留空或填 null。
+- **`id-map.json` 入约**：FK 数值化必须配"稳定 id 映射"旁车，否则重排即断链。长铗传 v0.3.1 已实践此模式。
+
+### 独立复审处置（`DISPATCH-20261007-019` / `REV-20261007-030` + `031`）
+- **F2（material，已修）**：校验器表索引 **121 ≠ 123** —— `importFiles` / `referenceAnalysisSources` 的 store 定义不以 `++id` 开头，旧正则漏掉 → 这两表的产物会被**误报**假 ERROR。已改为按 §2 表格行解析（实测 123）。
+- **F1（material，已处置）**：契约规定的旁车键名 `blockProvenance` 与**广陵散历史产物**的 `blocks` 不一致 → 契约 §3 补"历史不一致"说明；校验器把非规范键名由 NOTE 升为 **WARN**（不改写历史产物）。
+- **U4 #1（已修）**：路径不存在时抛**未捕获 `FileNotFoundError`** 且退出码 1 与"业务 FAIL"同码 → 现为友好提示 + 退出码 **2**，并打印 `ABORTED`（不再打印误导性的 `TOTAL ERRORS: 0`）。
+- **F3（已更正）**：`COMPAT.md` 原称"整表无 `id` 则跳过其 FK 检查"**不实** → 实测仍报 `dangling`（悬挂检查用**全表 id 并集**）。已按实测更正。
+- **F4/F6（已修）**：`S-data-envelope.md` 示例残留 `0.3.0` → 更新为 `0.3.1`；本条 CHANGELOG 补记 X2 修复（此前漏记）。
+
+### 断言数
+- 技能自检器（`check_consistency.py`）：**19 项**（未变）
+- 产物校验器（`check_framework_artifact.py`）：**新增**，独立于技能自检器
+
+## v0.3.0 — 2026-10-06
+
+### 补齐覆盖缺口（"AI 能写什么"此前只有抽象描述）
+- **新增 `references/field-registry.md`**（机械生成自上游 `src/lib/registry/field-registry.ts` 799 行 +
+  `adoption-schema.ts` 1049 行）：
+  - §1 `FIELD_REGISTRY` — **64 张表 / 528 项**可写字段（字段 / 登记类型 / 枚举值 / 是否属「AI 生成启用」子集）；
+  - §2 登记类型语义（`string`/`longtext`/`number`/`boolean`/`json`/`object`/`array`/`enum`）；
+  - §3 `ADOPTION_SCHEMAS` — **53 张集合表**写回策略（identity / 去重 / 必需字段 / 自动盖章 / **外键校验 32 条**〔24 个不同外键字段名〕 / ownerFrom）。
+    这正好覆盖 `adopt()` 六项校验里的 field / 外键 / owner 三项的**登记侧**事实。
+    > 注：此处数字此前误写为「24 对」（把"不同字段名数"当成了"条目数"）—— 由独立复审 `REV-20261006-014` 抓出并修正。
+- **为什么这是缺口**：`SKILL.md` §二 把「AI 能写什么」列为三个单一事实源之一，
+  但此前只写了"`FIELD_REGISTRY` + `AdoptionSchema` + `adopt()`"的抽象描述，
+  且 `schema-tables.md` §3 明确写着"逐表清单**尚未抽取**…未抽取前不得写入契约"。本版补上。
+- **抽取要点（如实记录）**：登记存在**两种形态**（工厂调用 `text(target, field, …)` 与**对象字面量**），
+  且 `FIELD_REGISTRY` 通过 `...WORLDVIEW_GENERATABLE_FIELD_SPECS` / `...STORY_CORE_GENERATABLE_FIELD_SPECS`
+  **展开包含**两个子集（共 25 项）—— 解析器必须**解析展开**，否则会重复计数或漏项。
+  最终 **0 条未解析**，并断言"两个子集全部包含于展开结果"。
+- **机器核对（独立解析路径，非生成器自身）**：`528 = 503（工厂调用）+ 25（展开子集）` 逐条相等、类型全对；
+  采纳表 `53 = 53`；外键 **32 条**（24 个不同字段名）。核对脚本首版曾把 `fkChecks` 子数组的 `target` 误当采纳表（得到 54），
+  以及把 §3 行误算进 §1（得到 581）—— **是核对方法错、不是产物错**，已修正方法后复验。
+
+### 机制（防这两份参考文件漂移）
+- 新增断言 **`X1`**：`field-registry.md` §1 出现的每张表都必须存在于 `schema-tables.md` 的表清单中（禁凭空多表）。
+- 新增断言 **`X2`**：该文件**自述的计数**（表数 / 项数 / 集合表数）必须等于**实际行数**（防"123 张"式漂移）。
+- 断言数 17 → **19**；同步更新 `SKILL.md` / `README.md` / `COMPAT.md` 的计数与版本。
+
+### 旧表述清零（律：新规则必须杀掉旧表述）
+- `references/schema-tables.md` §3：`FIELD_REGISTRY` 一节由**「下一版补齐 / 未抽取前不得写入契约」**
+  改为**已抽取**并指向 `references/field-registry.md`（本文件只管"表 / store 规格 / TS 接口"）。
+- `SKILL.md`：§二.2 与「横切参考」两处补上 `field-registry.md` 的指向。
+
+## v0.2.2 — 2026-10-06
+
+### 排错（真实死链 + 检查器假阴性）
+- **发现**：WSL 原件**缺少** `references/` 目录，但 `SKILL.md` 用反引号引用了
+  `` `references/schema-tables.md` `` —— 属**死链**；然而 v3 检查器仍报 `PASS`。
+  - 根因 1：`L1` 只匹配 markdown 链接 `[t](p)`，**看不见反引号 code span**。
+  - 根因 2：`R3` 只在 `references/` **存在时**扫孤儿；目录整体缺失时循环被跳过 → 直接判"无孤儿"。
+  - 两者叠加 → 「引用了但文件不存在」**完全没有断言覆盖**（假阴性）。
+- **修复**：新增断言 **`L2`「被引用的本地文件都存在（含反引号 code span）」** ——
+  从原文抽取 `references|contracts|scripts/<name>.<ext>` 并逐条验存。
+  先令其在 WSL 原件上复现 **FAIL**（`SKILL.md → references/schema-tables.md`），再修文件使其 **PASS**（测试测试）。
+  同时澄清 `R3` 职责边界：只管"多余文件"，存在性归 `L2`。
+- **根因防复发**：新增断言 **`V2`「版本与断言数的当前态声明自洽」** ——
+  校验 `SKILL.md` 的「本技能版本」与 frontmatter 一致、且其声明的断言数 = 实际断言数；
+  `README.md` 的断言数一致；`skill-card.md` 版本与 frontmatter 一致。
+  （这类漂移此前全靠人工发现，正是本轮四处数字互不一致的来源。）
+
+### 补记
+- `references/schema-tables.md` 此前**只存在于工作副本、未进版本记录**（CHANGELOG/COMPAT 均无）——
+  这正是它没被同步回 WSL 的原因；本版补记。
+- **核对**（实测 2026-10-06）：该文件声称的「123 张表」与上游 `src/lib/db/schema.ts` 的
+  `STORYFORGE_STORES`（展开）及 `StoryForgeDB` 的 `Table<>` 类声明**双向集合完全相等**（123 = 123 = 123）。
+- `references/schema-tables.md` §3 如实声明：`FIELD_REGISTRY` 逐表可写字段清单**尚未抽取**，
+  未抽取前不得写入契约。
+
+### 独立复审发现并修复（子 Agent 对抗性复审，非自审）
+- **[高] `references/schema-tables.md` §1 有 11 处事实错误**：原文件对
+  `chapters / characterRelations / characters / codexCategories / codexEntries / foreshadows /
+  itemLedger / outlineNodes / storyCores / worldGroups / worldviews` 断言「未在 `src/lib/types/*.ts` 找到同名接口」，
+  但对应接口**都存在**（首版抽取器漏了 `extends` 形态）。→ 已重新机械生成 §1：21 张表全部配齐接口字段表，
+  并对 `extends RagDocumentMetadata` 的 11 个接口标注继承来源（只列自身字段，避免重复计数）。
+- **[中] §2 有 44/123 行 store 规格被 110 字符静默截断**（无省略号，残缺片段易被误当完整规格）→
+  重生成后输出**完整**规格，标题改为「（123 张，完整 store 规格）」。
+- **[中] `CHANGELOG.md` 底部「校验方式」块仍写 `16 项断言`**（`V2` 不扫 CHANGELOG → 漏网）→
+  **移除**命令行注释里的硬编码数字（改为只写「期望：RESULT: PASS」），从根上消除该重复事实源；
+  并把 `V2` 扫描面扩到 `COMPAT.md`（校验「当前版本」与「现行断言数」）。
+- **[低] `L2` 正则未加左边界** → 加 `(?<![\w/])`，避免命中 `apps/api/scripts/seed.ts` 这类子路径片段。
+- **[低] `V2` 的 `total = len(items) + 1` 依赖「V2 是最后一项」** → 加显式自检，若 V2 非最后一项即报 FAIL。
+
+### 第 2 轮独立验证（确认修复 + 再抓 1 处）
+- 第 1 轮 1–4 条**确认已修复**；§1（21/21）与 §2（123/123）经独立脚本逐字节比对**与上游完全相等**。
+- **[中] 新发现：`V2` 对「文件缺失」不覆盖** —— 删除 `README.md` / `COMPAT.md` / `skill-card.md`
+  任一后，三处 `if os.path.isfile(...)` 会**静默跳过**，V2 仍报 OK、整体仍 PASS。
+  → 已修：`V2` 先做这三个「当前态声明文件」的**存在性**断言，缺失即 FAIL
+  （复现测试见 `work/test_v2_missing_file.py`：删除后 rc=1 且 V2 报「缺失」）。
+
+### 文档漂移修复（四处数字/版本互不一致）
+- `COMPAT.md`：当前版本 `v0.2.0` → **`v0.2.2`**；基线文档数 8 → **10**；断言数 `11` → **14（v0.2.0 实际）**，
+  并给出断言数轨迹 `14 → 15（+C4）→ 17（+L2 +V2）`。
+- `README.md`：断言数 `13` → **17**；版本 `v0.2.0` → **`v0.2.2`**；限制条目指向 `references/schema-tables.md`。
+- `SKILL.md`：版本 `0.2.1` → **`0.2.2`**；断言数 `13` → **17**。
+- `CHANGELOG.md`：v0.2.0 条目的断言数 `13` → **14**；两处校验命令行注释**去掉硬编码数字**。
+
+### 校验方式（本版起生效）
+```bash
+python scripts/check_consistency.py     # 期望：RESULT: PASS (0 fail, 0 warn)
+```
+
 ## v0.2.1 — 2026-10-06
 
 - **修复跨文件规则矛盾（用户使用中发现）**：`SKILL.md` §五 曾写「每块带 provenance（在 JSON 里）」，与 `S-data-envelope.md` §3 的「必须放旁车文件」冲突。
@@ -12,7 +159,7 @@
   内容含诚实的已知风险与缓解措施）
 - 说明：`verify` 的安全判定为 **clean / benign**（confidence: high）—— 本技能不包含隐藏安装钩子、
   不使用凭据、不自动改数据库/运行态
-- 标注：本技能的 JSON 产物**不是备份包**（不含 `version` 字段），导入由用户在应用内完成
+- 标注：本技能的 JSON 产物**不是备份包**（不含 `version` 字段），按文件交付、**不依赖应用**
 
 ## v0.2.0 — 2026-10-05
 
@@ -38,7 +185,7 @@
 - 凡「达芬奇」等**环境来源**内容，逐行标注为非源仓库基线
 
 ### 机制
-- 新增 `scripts/check_consistency.py`（13 项断言，零依赖）
+- 新增 `scripts/check_consistency.py`（14 项断言，零依赖）
 - 修正一处**会导致导入必然被拒**的契约错误：早期草稿把自造顶层键标为"可核验"，
   且把 IndexedDB `schema v10` 与备份版本 `v14` 混用
 
@@ -52,5 +199,5 @@
 ## 校验方式
 
 ```bash
-python scripts/check_consistency.py     # 13 项断言；期望 0 fail 0 warn
+python scripts/check_consistency.py     # 期望：RESULT: PASS (0 fail, 0 warn)
 ```
