@@ -6,7 +6,7 @@ description: >-
   漫画分镜/漫剧 prompt 包（B 类）、漫剧后期对接生成管线（C 类）。
   使用场景（含「小说转剧本/剧本改编」「世界封存/世界引擎/世界出口包」「生成框架语料」）：用户要求"按 StoryForge 框架写长篇/短篇/剧本/漫画/漫剧/AVG/跑团"、
   "生成框架语料"、"按写作 SOP 推进"、"对齐 StoryForge 数据契约"。
-version: 0.3.3
+version: 0.4.0
 license: MIT
 compatibility: >-
   电影大师 agent 专属 H 类知识资产。依赖 projects/<项目>/ 已有 md 设定资产与
@@ -187,7 +187,10 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
    “主张与证据等量”：一句主张配一条证据；provenance 必须**逐块**标注（来源 md + revision + contentHash）—— 落在**旁车文件**中，存放位置以 `contracts/S-data-envelope.md` §3 为准。
    > 素材来源：`H:\StoryForge-master\docs\ai\anti-hallucination.md`（**辅助来源**，非数据契约基线）。
 
-7. **完整复刻边界**：本 skill 复刻"创作语料 + 数据契约 + SOP"，**不**复刻 StoryForge 的浏览器 IndexedDB 运行时与产品引擎。
+7. **权威值不得擅自「修正」（v0.4.0 新增）**：上游的字段名、枚举值、历史产物里的键名，**即使看起来是错的**（拼写错误、命名不一致、契约自相矛盾），也**不得**在语料里「顺手改对」。做法固定四步：
+   ① 按**上游原值**产出；② 把差异**显式标注**（旁车 `notes` 或交付说明）；③ 历史产物**不改写**，只报可见的偏离（校验器 **WARN**）；④ 把「要不要统一」的决定**交回作者**。
+   > 先例（都是实测遇到的）：上游多写手参数拼作 `muti`（**不是** `multi`）；广陵散历史旁车用 `blocks`（契约规范键名是 `blockProvenance`）。
+8. **完整复刻边界**：本 skill 复刻"创作语料 + 数据契约 + SOP"，**不**复刻 StoryForge 的浏览器 IndexedDB 运行时与产品引擎。
 
 ## 五、产物形态（与 StoryForge 对齐）
 
@@ -212,7 +215,12 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 6. 对齐基线：确认所依据的源文档版本与上表一致（不一致先停下问，不按记忆推进）
 7. 验证：字段完整、**旁车 provenance 齐全**（含证据分级标注）、stale 检查通过、无越类（B/C 只视觉化/后期侧）
 8. 交付前跑 `python scripts/check_consistency.py`（应为 0 fail）
-9. **产物校验**：交付前跑 `python scripts/check_framework_artifact.py <framework.json>`（应为 0 errors）。校验器覆盖 6 类契约违规：FK 类型 / 必需字段 / 枚举闭集 / 顶层结构 / 旁车结构 / context-manifest。
+9. **产物校验**：交付前跑 `python scripts/check_framework_artifact.py <framework.json>`（应为 0 errors）。校验器覆盖 6 类契约违规：FK 类型 / 必需字段 / 枚举闭集 / 顶层结构 / 旁车结构 / context-manifest；v0.4.0 起另含 **T7 编号与引用完整性**（见 `contracts/A-longform.md` §8）与 **T2 证据门槛**。
+10. **证据门槛（v0.4.0）**：任何「已完成」的声明都必须能指向**可复算证据**，不得以「任务已启动 / 文件已写 / 模型说完成」代替：
+    - **产物级**：`*.provenance.json` 的 `blockProvenance[]` 每项必须有 `contentHash`（`sha256:` 形态）、`evidenceGrade ∈ {OBSERVED,INFERRED,UNKNOWN}`、`sources`；
+    - **有记录必须有来源**：`recordCount > 0` 却 `sources` 为空时，**必须在 `notes` 里显式声明原因**（如「由源稿推导，无 md 来源」）；
+      **既无 `sources` 也无 `notes` = 静默缺失**，判 **ERROR**（「显式 ≠ 空」）；
+    - **章节级**：章节连续性/对账类产物须带 `sourceTextHash` 与 `evidenceQuotes`（原文引用 + 偏移），不得只写结论。
 
 ## 子契约文件（按需读取）
 
@@ -223,6 +231,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 - `contracts/B-motion-drama.md` — 漫剧素材前期：系列圣经·逐集·分镜·Image/Video Prompt IR
 - `contracts/C-post.md` — 漫剧后期：prompt 包 → 达芬奇〔环境来源〕/生成管线对接
 > **横切契约（不属任何单一产品，全部产品适用）**：`contracts/S-data-envelope.md`
+- `contracts/INVARIANTS.md` — **不变量 ↔ 断言对照表**（v0.4.0）：每份契约的 `INV-*` 在此有归属；断言侧增删必须同步此表
 >
 > **横切参考（机械生成的派生索引，与源码不一致时以源码为准）**：
 >
@@ -240,7 +249,7 @@ narrativeSummaryNodes  id, projectId, worldGroupId, level, sourceChapterId, sour
 
 ## 来源与验证
 
-> **本技能版本**：v0.3.3（2026-10-07）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（19 项断言）；产物合规性由 `scripts/check_framework_artifact.py` 校验（6 类契约违规）。
+> **本技能版本**：v0.4.0（2026-10-07）。变更见 `CHANGELOG.md`；内部一致性由 `scripts/check_consistency.py` 校验（20 项断言）；产物合规性由 `scripts/check_framework_artifact.py` 校验（6 类契约违规）。
 
 ### 基线
 

@@ -12,7 +12,7 @@
 | 版本基线 git 仓库 | **本工作副本与原件目录都不是 git checkout**（无 `.git`），故差异以**快照对比**方式产出；**发布仓库另存**：`github.com/taosiuman/storyforge-writing`（发布动作走 `publish/` 独立 clone） |
 | 上游来源 | `github.com/yuanbw2025/storyforge` → 本地主基线 `H:\storyforge-main`；辅助来源 `H:\StoryForge-master` |
 | 原始版本 | v0.1.0（`source_version_baseline: 2026-09-27 (…v1.7.0)`，**已过期**） |
-| 当前版本 | **v0.3.3** |
+| 当前版本 | **v0.4.0** |
 
 ## 2. 基线判定（依据 `REV-20261005-015`）
 
@@ -36,10 +36,10 @@
 | 契约加厚 | `A-longform.md`：节点模式**字段闭集**（9 项）+ 图执行前 5 项检查 + **跨模式验收 5 条**；长铗传 70→**90 集**、`scripts/act1-4`→`episode-01..04` | `REV-20261005-016` #5；`REV-20261005-015` #3 |
 | 契约加厚 | `A-interactive.md`：补 `AdventureContentV2` **八能力** + 唯一权威写入 `commitAdventureAction`/`commitAdventureNarrativeChoice` + `text-adventure-production/` 入口 | `REV-20261005-015` #4 |
 | 来源标注 | `C-post.md` / `B-motion-drama.md` / `SKILL.md`：凡「达芬奇」相关内容一律标注为**环境来源（`INFERRED`）**，非源仓库基线（源仓库 0 命中） | `REV-20261005-015` #5 |
-| 机制 | 新增 `scripts/check_consistency.py`（**14 项断言**，含路由↔契约集合一致性、术语一致性、来源标注、契约锚点）—— 断言数轨迹：v0.2.0 = 14 → v0.2.1 +`C4` = 15 → v0.2.2 +`L2` +`V2` = 17 → v0.3.0 +`X1` +`X2` = **19（现行）** | 同 seedancer 模式 |
+| 机制 | 新增 `scripts/check_consistency.py`（**14 项断言**，含路由↔契约集合一致性、术语一致性、来源标注、契约锚点）—— 断言数轨迹：v0.2.0 = 14 → v0.2.1 +`C4` = 15 → v0.2.2 +`L2` +`V2` = 17 → v0.3.0 +`X1` +`X2` = **20（现行）** | 同 seedancer 模式 |
 | 横切参考 | 新增 `references/schema-tables.md`（机械生成自上游 `src/lib/db/schema.ts` + `src/lib/types/*.ts`；123 张表**完整** store 规格 + 当时 21 张重点表 TS 接口 —— **该 21 表详情已于 v0.3.3 去重**，见下表）。v0.2.2 由独立复审驱动**重生成**：修正 11 处「未找到同名接口」误判、去除 §2 的 110 字符静默截断 | 2026-10-06 实测 |
 | 横切参考 | 新增 `references/field-registry.md`（机械生成自上游 `src/lib/registry/field-registry.ts` + `adoption-schema.ts`）：**64 张表 / 528 项可写字段** + 25 项「AI 生成启用」子集 + **53 张集合表**写回策略（identity/去重/必需/盖章/ownerFrom）。补上 SKILL.md「三个单一事实源」中"AI 能写什么"此前只有抽象描述、无逐表清单的缺口 | 2026-10-06 实测 |
-| **产物级校验（v0.3.1）** | 新增 `scripts/check_framework_artifact.py`（**由电影大师在长铗传 v0.3.0 → v0.3.1 实战修复中编写并验证**）：校验生成的 framework.json 是否符合契约 —— **6 类违规**（FK 字段类型 / 必需字段 `id`+`projectId` / 枚举闭集 / 顶层结构无 `version` / 旁车 `blockProvenance` 必须是 list / `context-manifest.json` 存在性）+ FK 悬挂与 null 警告。**与技能自检器分工**：`check_consistency.py` 校验**技能包文档自身**（19 项），本校验器校验**产物** | `REV-20261007-030`（实战驱动）|
+| **产物级校验（v0.3.1）** | 新增 `scripts/check_framework_artifact.py`（**由电影大师在长铗传 v0.3.0 → v0.3.1 实战修复中编写并验证**）：校验生成的 framework.json 是否符合契约 —— **6 类违规**（FK 字段类型 / 必需字段 `id`+`projectId` / 枚举闭集 / 顶层结构无 `version` / 旁车 `blockProvenance` 必须是 list / `context-manifest.json` 存在性）+ FK 悬挂与 null 警告。**与技能自检器分工**：`check_consistency.py` 校验**技能包文档自身**（20 项），本校验器校验**产物** | `REV-20261007-030`（实战驱动）|
 | **大扫除（v0.3.3）** | **只清理、不加功能**（用户指定范围）：① 删两脚本无用的 `from __future__ import annotations`；② 删 `scripts/__pycache__`；③ 术语统一（`SKILL.md` / `C-post.md` 的旧称「漫剧前期」→「漫剧素材前期」）；④ 去过时表述 4 处（`COMPAT` §3 行、`S-data-envelope` §6 空转项、`README` 已知限制、`SKILL` 子契约列表）；⑤ **`A1` 锚点去耦合**（`待实测` → `精确键集`，避免清理该词时假红）；⑥ **产物校验器表名来源改 §2 单源**（原全文标题扫描 ⇒ 任何 `### 非表名` 都被当合法表 = **假 PASS**）；⑦ **去重**：`README` 路由表/基线表/校验命令（→ 指向 `SKILL` §一/来源与验证、`COMPAT` §4）、`schema-tables.md` §1（21 表详情 → 空存根，内容由 §2 + §4 覆盖，**-15.1 KB**）；⑧ git 仓库措辞澄清（工作副本无 `.git`，发布仓库另存） | 本轮大扫除扫描 + `REV` 复审 |
 | 契约澄清（v0.3.1） | ① `field-registry.md` §4 新增「**只读表**」章节（`temporalFacts` / `narrativeSummaryNodes` 无 FIELD_REGISTRY 条目 —— 系统生成，AI 不写）；② `S-data-envelope.md` §3 明确**旁车文件结构**（`blockProvenance` 必须 list + 5 字段齐备 + `contentHash` 建议 sha256）| 电影大师 `AUDIT-AND-FIX-REPORT.md` §4 |
 
@@ -51,7 +51,7 @@ python scripts/check_framework_artifact.py <framework.json>   # 产物校验；�
 ```
 
 记录：`generated/storyforge_consistency_p3*.out`（父仓库）。
-产物校验实测（2026-10-07）：`广陵散/storyforge-framework.json` → PASS（20 表 / 0 errors / 23 warnings）；
+产物校验实测（2026-10-07）：`广陵散/storyforge-framework.json` → **PASS（18 表 / 0 errors）**；
 `长铗传/framework-v0.3.1/*.json` → PASS（27 表 / 0 errors / 41 warnings）。
 
 ## 5. 已知限制（如实声明）
@@ -86,7 +86,35 @@ python scripts/check_framework_artifact.py <framework.json>   # 产物校验；�
   > 但**广陵散**的历史旁车用的是 `blocks`。校验器对该键报 WARN 而非 ERROR（不改历史产物）；
   > 新产物应统一用 `blockProvenance`。
 
-## 6. 回写规矩（与 seedancer 同）
+## 7. 发布清单（v0.4.0 显式声明）
+
+**起因**：2026-10-07 首次发布时，ClawHub 实际只收 **19** 个文件，
+`.gitattributes` / `.gitignore` / `skill-card.md` 都不在其中 —— 当时**没有显式声明**，
+导致我误判过一次 `card.missing`（见 `REL-20261007-001` §4）。
+
+**计入发布包**（根级 6 个 + `contracts/` `references/` `scripts/` `evals/` 全部）：
+
+```
+SKILL.md  README.md  COMPAT.md  CHANGELOG.md  LICENSE  NOTICE.md
+contracts/*.md   references/*.md   scripts/*.py   evals/*.json
+```
+
+**排除项与理由**：
+
+| 排除 | 理由 |
+| --- | --- |
+| `.gitattributes` / `.gitignore` | dotfile；ClawHub 打包路径分量不许以点开头（上游 `skill_marketplace/bundle.py:21`） |
+| `skill-card.md` | **card 由服务端生成**，不参与文件包 —— **包内没有它属正常**，不是缺陷 |
+| `__pycache__/` `*.pyc` | 构建产物 |
+
+**发布前必跑**：`python generated/sf_release_manifest_k7.py`
+（按本节规则算出应发集合，与最近实测的线上清单比对；不一致即退出 2，**须先对齐再发布**）。
+
+## 6. 回写规矩（升级为三层树清单）
 
 - 本副本的改动**不自动回写**；回写前须：① 差等级独立复审通过 ② 用户逐项确认 ③ 原件备份 ④ hash 比对。
-- 回写方式：优先对原件目录做快照对比 + 应用差异（**原件目录无 `.git`**，故不使用 `git apply`）。
+- 回写方式：**用三层树清单工具**（`python generated/sf_layers_k7.py`）——
+  逐文件 `sha256` 清单 + **基线三方判定**；**冲突必停**（退出 2）并把 WSL 现状备份到 `backups/`，
+  **绝不静默覆盖**（本仓已两次因静默覆盖/被覆盖吃亏：`INC-20261006-002`、`INC-20261007-001`）。
+  - `--manifest` 只读看状态 ｜ `--apply` 无冲突才写 ｜ `--baseline` 人工确认后接受现状为基线
+  -（原件目录无 `.git`，故不使用 `git apply`。）

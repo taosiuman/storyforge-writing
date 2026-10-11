@@ -29,7 +29,7 @@
   覆盖 6 类违规：FK 字段类型（必须 number）/ 必需字段（`id` + `projectId`）/ 枚举闭集 /
   顶层结构（无 `version` 字段）/ 旁车结构（`blockProvenance` 必须是 list）/ `context-manifest.json` 存在性。
 
-19 项断言（摘要，非穷举）：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径（链接）/
+20 项断言（摘要，非穷举）：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径（链接）/
 被引用本地文件存在性（含反引号）/ 横切参考交叉一致 / 参考文件自述计数 / 裁剪三态术语 /
 证据分级规则句 / 环境来源逐行标注 / 契约锚点 / 契约实质下限 / 基线自洽 /
 provenance 单源 / 体积预算 / 版本与断言数自洽。
@@ -60,4 +60,4 @@ provenance 单源 / 体积预算 / 版本与断言数自洽。
 
 ## 版本
 
-v0.3.3 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。
+v0.4.0 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。

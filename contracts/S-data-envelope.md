@@ -93,7 +93,7 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```jsonc
 {
-  "storyforgeFramework": "0.3.3",     // 本技能版本（非备份版本）
+  "storyforgeFramework": "0.4.0",     // 本技能版本（非备份版本）
   "baseline": { "docs/DATA-GOVERNANCE.md": "v1.8.0", "docs/products/LONGFORM-AND-NODE.md": "v1.6.0" },
   "blocks": [
     { "table": "characters",          // 表名必须 ∈ PROJECT_TABLES 派生清单
@@ -110,7 +110,7 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```json
 {
-  "storyforgeFramework": "0.3.3",
+  "storyforgeFramework": "0.4.0",
   "generatedAt": "2026-10-07",
   "generator": "电影大师 / storyforge-writing",
   "hashAlgorithm": "sha256",
@@ -134,10 +134,16 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 - `blockProvenance` 必须是 **list**（不是 dict），每项对应主文件 `blocks[]` 中的一张表
 - 每项必须有 5 个字段：`table` / `recordCount` / `contentHash` / `evidenceGrade` / `sources`
 - `contentHash` 建议用 sha256（非加密占位如 fnv1a64 需标注"应用侧应重算"）
-- `sources` 是 list，每项记录来源文件 + 版本 + 证据等级
+- `sources` 是 list，每项记录来源 + 版本 + 证据等级。**实测存在两种合规形态**（v0.4.0 明确）：
+  - 形态 A（`{md|path|file, revision?, grade}`）—— 逐文件来源；
+  - 形态 B（`{key, evidence, sources:[字符串]}`）—— 具名来源组 + 其下的文件列表。
+  校验器接受**任一**含来源标记（`md`/`path`/`file`/`key`）的形态；等级取 `grade` 或 `evidence`。
+- **有记录必须有来源**：`recordCount > 0` 而 `sources` 为空时，必须用 `notes` **显式声明原因**；
+  既无 `sources` 也无 `notes` 判 **ERROR**（静默缺失）。空表（`recordCount = 0`）允许无来源。
 - `storyforgeFramework` 填**本技能版本**（非产物版本）—— 示例中的版本号随技能版本更新
 
-> ⚠️ **键名的历史不一致（`REV-20261007-030` F1，如实登记）**：本契约规定的规范键名是 `blockProvenance`，
+> ⚠️ **键名的历史不一致（`REV-20261007-030` F1，如实登记）**
+> （处置纪律见 `SKILL.md` §四 第 7 条「权威值不得擅自修正」）：本契约规定的规范键名是 `blockProvenance`，
 > 但**广陵散**的历史旁车用的是 `blocks`（同形状 list，键名不同）。**新产物一律用 `blockProvenance`**；
 > 校验器 `check_framework_artifact.py` 对非规范键名报 **WARN**（不算 ERROR），以便偏离可见而不改写历史产物。
 
@@ -167,3 +173,20 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 - [ ] **provenance 与 evidenceGrade 在旁车文件**，不混入候选记录
 - [x] 交付说明列出未定项与取得方法（**当前：无遗留**，见 §5）
 - [x] 产物以文件交付为终点：**不依赖任何应用的导入 / 运行时**
+
+## 7. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns **语料结构与其校验**；上游 owns 备份/导出格式（`ProjectExportData`、
+`backup-trust.ts`）与导入运行时；**作者** owns 交付物的用途与去向。
+
+**不变量**
+- `INV-S-1` 语料**不含 `version` 字段**（不冒充备份包）。
+- `INV-S-2` `provenance` / `evidenceGrade` **只在旁车**，绝不进记录内。
+- `INV-S-3` **有记录必须有来源**：`recordCount > 0` 且 `sources` 为空时，必须用 `notes`
+  **显式声明原因**（「显式 ≠ 空」）。
+- `INV-S-4` 若按上游备份格式交付，必须满足**精确键集**（多一键即拒）。
+- `INV-S-5` 悬空引用必须按 `A-longform.md` §8 在 `unresolvedRefs` 留痕。
+
+**禁止项**
+- 不得把旁车字段塞进 JSON 记录内。
+- 不得声称"可导入应用"或代操作导入（本技能**不依赖任何应用**）。

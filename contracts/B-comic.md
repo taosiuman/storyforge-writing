@@ -51,3 +51,15 @@ comicReviewIssues  id, workId, adaptationProjectId, stableKey, pageKey, panelKey
 - 格/页/视觉主体全部走**候选→采纳**（同总入口 SOP）
 - 区分"忠实保留/合理改编/新增假设"，作者可追溯删改
 - 媒资缺失可出 prompt-only，但不得标 reference-ready
+
+## 6. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 视觉化产物的字段闭集；上游 owns schema v5 comic 系列表；**作者** owns 画风与分镜取舍。
+
+**不变量**
+- `INV-BC-1` 字段必须 ∈ schema v5 comic 表闭集。
+- `INV-BC-2` B 类**只做视觉化**：剧情/设定来自 A 类产物，不在此重写。
+
+**禁止项**
+- 不得代写或改写剧情设定（越 A 类边界）。
+- 不得声称已产出图片/页面渲染结果（本技能只出分镜与描述）。

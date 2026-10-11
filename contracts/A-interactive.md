@@ -62,3 +62,17 @@
 
 文字冒险/跑团可**复用长篇的世界观/角色/规则**（worldviews/characters/powerSystems/creativeRules），
 但以独立产品 work 拥有运行态；世界引用走 S2 定向（WorldReference + Brief + SourcePlan + 用户授权）。
+
+## 6. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 交互类产物的生成纪律；上游 owns `AdventureContentV2` 八能力与写入 API；
+**作者** owns 分支与结局的取舍。
+
+**不变量**
+- `INV-I-1` `AdventureContentV2` **八能力齐备**方可交付（缺一不可）。
+- `INV-I-2` 写入只经 `commitAdventureAction` / `commitAdventureNarrativeChoice`，**不得自造写入路径**。
+- `INV-I-3` 跑团（TTRPG）语境下世界为**只读冻结**：规则包/场景/事件不得改写世界设定。
+
+**禁止项**
+- 不得在跑团上下文里回写世界或角色 Canon。
+- 不得声称已"运行"游戏会话（本技能只产出语料）。

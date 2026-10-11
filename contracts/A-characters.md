@@ -40,3 +40,19 @@
 - `character-merge-lifecycle`：角色合并
 - `knowledge-ledger`：角色知识台账（characterId + knowledgeKey + factId + sourceChapterId）
 - 角色状态卡（stateCards）随章节推进：`category / entityName / lastChapterId`
+
+## 6. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 角色卡与关系的**字段闭集与生成纪律**；上游 owns `characters` /
+`characterRelations` / `characterDrivenPlans` / `knowledgeLedger` 表与 `ADOPTION_EXTENSIONS`；
+**作者** owns 角色设定本身与采纳决定。
+
+**不变量**
+- `INV-C-1` 每条记录的字段必须 ∈ `references/field-registry.md` 的 `characters` 登记集。
+- `INV-C-2` `roleWeight` / `moralAxis` / `orderAxis` / `narrativeStatus` 必须取**闭集枚举值**
+  （禁中文长描述，如"主角·核心"）。
+- `INV-C-3` 关系的两端必须解析到**同一语料内已存在**的角色 id（或按 `A-longform.md` §8 显式留痕）。
+
+**禁止项**
+- 不得替作者决定角色的命运、关系走向或生死。
+- 不得把 `INFERRED` / `UNKNOWN` 的角色设定当作 `OBSERVED` 事实交付。

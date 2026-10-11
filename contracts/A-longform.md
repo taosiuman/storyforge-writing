@@ -89,7 +89,116 @@ allowed writes      允许写入的目标（对应 FIELD_REGISTRY）
 > `longform-agent-experience.spec.ts`。注意：模拟模型回归**只证明工程流程**，
 > 不证明真实模型的文学质量、整书无人值守生产或在线社区可用性。
 
+## 8. 章节编号与引用完整性（v0.4.0）
+
+**上游事实（不得凭直觉改，源 `src/lib/types/outline.ts`）**：
+`chapters` 以**数字 `id`** 标识、以 **`order`:number** 排序；
+`ChapterStatus` 闭集 = `outline`·`draft`·`revised`·`polished`·`final`。
+
+**硬规则**：
+
+1. **不得用字符串代号充当章节标识**：语料里 `chapters` 记录的 `id` 必须是**整数**。
+   `ep30` / `第3章` / `EP-12` 这类代号**只能**出现在 `title`、文件名等**展示位**，
+   **不得**出现在 `id` 或任何外键字段里。
+2. **代号的映射必须唯一**：若正文产物或文件名使用章节代号，必须能唯一解析回 `chapters.id`；
+   `order` 若存在必须是整数且**不重复**（章序可唯一映射）。
+3. **外键必须可解析，或显式留痕** —— 任何指向其它表的外键值，必须能在**同一语料**内解析到。
+   **解析不到时**只允许两种做法之一：
+   - 置 `null` 并在该记录的对应字段留痕；且
+   - 在**旁车**（`*.provenance.json`）登记一条 `unresolvedRefs`：
+     `{"table": "<表>", "field": "<字段>", "value": <原值>, "reason": "<为什么尚未生成>"}`
+   > **禁止静默悬空**：既不可解析、又未登记的引用 = **契约违规**。
+   > 这对应上游语义「**缺失 ≠ 空**」：缺失必须**显式**，不能表现为一个"看起来正常"的值。
+
+**校验（`scripts/check_framework_artifact.py`，v0.4.0 起）**：
+
+| 情形 | 判定 |
+| --- | --- |
+| `chapters` 的 `id` 是字符串 | **ERROR** |
+| `chapters` 的 `order` 非整数或重复 | **ERROR** |
+| 外键悬空且**未**登记 | **ERROR** |
+| 外键悬空但**已**登记 `unresolvedRefs` | **WARN**（留痕可见，不阻塞） |
+
+## 9. 章节后验与有界回环（v0.4.0）
+
+**依据（上游既有原语，不是外来设计）**：`chapters.continuityHandoff`（`ChapterContinuityHandoff`）
+与 `chapters.planReconciliation`（`ChapterPlanReconciliation`，含
+`reviewStatus ∈ {pending, confirmed-constraint, applied-outline, dismissed}`）。
+⚠️ 这两个字段在 `references/field-registry.md` 里**已登记为可写字段**，却在本技能文档中长期
+**0 次提及** —— 即「**可写但不指导**」：AI 看到 `object | —` 根本不知道填什么。本节补上。
+
+**规则**：
+
+1. **后验必须先于下一章**：每章正文完成后、**进入下一章之前**，产出/更新该章的
+   `continuityHandoff` —— `finalScene{location, storyTime, activeCharacters, lastAction}`、
+   `stateChanges`、`knowledgeChanges`、`commitments`、**`openLoops`**、`immediateNextIntent`、
+   `evidenceQuotes`。**理由**：下一章会读取上一章的世界/角色/叙事差异。
+2. **计划对账**：`planReconciliation` 记录 `completedGoals` / `unfinishedGoals` / `deviations` /
+   `newConstraints` / `nextChapterImpacts`，以及 `foreshadowingRevealed`（伏笔提前暴露）/
+   `delayedPlot`（情节推迟）。**未经作者确认不得视为已成立** —— `reviewStatus` 起于 `pending`，
+   只有作者确认后才转 `confirmed-constraint` / `applied-outline`（**未确认 ≠ 已确认**）。
+3. **有界回环**：后验若发现**事实性冲突**（与已确立的世界/角色状态矛盾），可打回上游重写该章，
+   **上界 3 次**；超限**停下转人工**，不得无限重试。（对标 DeterminFlow 的
+   `enable_reject_upstream` + `max_reject_count`。）
+4. **措辞 ≠ 事实**：纯措辞调整**不必**重跑后验；一旦润色**改变了情节事实**，**必须重跑该章后验**，
+   否则连续性状态与最终正文不一致。
+5. **证据形态**：`evidenceQuotes` 必须是**原文引用 + 偏移**（`quote`/`startOffset`/`endOffset`），
+   不得只写结论；两者缺一即视为证据不足。
+
 ## 7. 短篇（子集）
 
 短篇独立创作（INDEPENDENT-CREATION）：故事核 / 角色 / 单线大纲 / 正文；**可显式派生世界草稿或封存世界版本**。
 （v0.1.0 曾写「不提供『封装为世界』完整路径」，与源文档矛盾 —— 「不提供封装为世界」指的是**剧本 / 漫画**等改造类产品，见 `INDEPENDENT-CREATION.md:11`。）
+
+## 10. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 长篇产物的**生成顺序、字段闭集与后验纪律**；上游 owns
+`chapters` / `outlineNodes` / `detailedOutlines` / `storyArcs` 等表与节点运行时；**作者** owns 剧情决定与采纳。
+
+**不变量**
+- `INV-L-1` §1 的**九块覆盖范围**必须全部可生成（缺块须显式说明，不得静默省略）。
+- `INV-L-2` `chapters` 的 `id` 为**整数**、`order` 为整数且**唯一**（§8）。
+- `INV-L-3` 任何外键必须可解析，或按 §8 在旁车 `unresolvedRefs` **显式留痕**。
+- `INV-L-4` 每章**后验先于下一章**；`continuityHandoff` / `planReconciliation` 按 §9 产出。
+- `INV-L-5` provenance 与证据分级**只在旁车**（`S-data-envelope.md` §3）。
+
+**禁止项**
+- 不得跳过上游阶段直接产出正文（前置不足须先补上游）。
+- 不得无限回环：打回重写**上界 3 次**，超限转人工。
+- 不得把未确认的 `planReconciliation` 当作已成立（`reviewStatus` 起于 `pending`）。
+
+### 9.1 字段级结构（v0.4.0；源 `src/lib/types/outline.ts`，逐字对齐）
+
+> 这两个字段在 `field-registry.md` 里登记为 `object` 类型 —— **可写但此前无指导**。
+> 以下为**上游权威结构**，语料若写入必须按此形状；`?` = 可选。
+
+**`continuityHandoff`（必填 7 项 + 2 可选）**
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `chapterId` | number | 所属章节 |
+| `sourceTextHash` | string | 正文哈希（证据锚点） |
+| `finalScene` | object | **必填** `activeCharacters: string[]`；可选 `location` / `storyTime` / `lastAction` |
+| `stateChanges` | string[] | 世界/角色**状态**变化 |
+| `knowledgeChanges` | string[] | **认知**变化（谁知道/误信什么） |
+| `commitments` | string[] | 本章做出的**承诺**（须兑现） |
+| `openLoops` | string[] | **未闭合环**（伏笔/悬念） |
+| `immediateNextIntent?` | string | 紧接的下一意图 |
+| `evidenceQuotes` | array | **非空**；每项 `{quote, startOffset, endOffset}` —— 原文引用 + 偏移，**不得只写结论** |
+| `schemaVersion` / `extractorVersion` / `textNormalizationVersion` / `generatedAt` | number/string | 抽取器元数据 |
+
+**`planReconciliation`（必填 5 类对账 + `reviewStatus`）**
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `chapterId` / `sourceTextHash` / `planSourceHash` | number/string | 章 + 正文哈希 + **计划哈希**（对账基准） |
+| `completedGoals` / `unfinishedGoals` / `deviations` / `newConstraints` / `nextChapterImpacts` | `Item[]` | 五类对账 |
+| `foreshadowingRevealed?` / `delayedPlot?` | `Item[]` | 伏笔**提前暴露** / 情节**推迟** |
+| `reviewStatus` | enum | **`pending`** · `confirmed-constraint` · `applied-outline` · `dismissed` —— **起于 `pending`** |
+| `confirmedActualProgress?` / `reviewedAt?` / `generatedAt` / `actions?` | — | 作者对账记录 |
+
+`Item` = `{ text: string, evidenceQuotes: Array<{quote, startOffset, endOffset}> }` —— **每一项对账都要带原文证据**。
+
+**机器校验**：`check_framework_artifact.py` 在 `chapters` 记录带 `continuityHandoff` 时，
+校验必填 7 项齐备、`evidenceQuotes` 非空且每项含 `quote`/`startOffset`/`endOffset`。
+

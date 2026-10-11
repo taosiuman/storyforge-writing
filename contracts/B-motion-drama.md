@@ -71,3 +71,18 @@ V1 **不要求、不读取、不生成** WorldRelease；不向世界引擎写人
 - 本契约产出的 **Image/Video Prompt IR + 适配包**是 C 类生成管线的输入
 - C 类（`contracts/C-post.md`）负责把 prompt 包对接到 Seedance/达芬奇〔环境来源〕/剪辑
 - 交接物冻结：来源 Work/范围/revision/hash + source manifest，**不反向写小说**
+
+## 8. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 漫剧素材前期的**主链顺序与物料闭集**；上游 owns MOTION-DRAMA 产品契约；
+**作者** owns 系列走向与验收。
+
+**不变量**
+- `INV-BM-1` **生产主链严格顺序**：系列圣经 → 逐集 → 分镜 → Prompt IR → 适配包。
+- `INV-BM-2` Prompt IR 必须 **provider-neutral**（不绑定单一模型/供应商）。
+- `INV-BM-3` 完成层级**两级**（不建第二产品）。
+- `INV-BM-4` 不可渲染/不可解析项**不得静默忽略**，须显式列出。
+
+**禁止项**
+- 不得把环境来源（如"达芬奇"）标为源仓库基线事实。
+- 不得越过 C 类去做后期对接。

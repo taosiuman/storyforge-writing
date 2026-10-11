@@ -2,6 +2,48 @@
 
 本项目版本独立于上游 StoryForge 的版本号；上游基线以**逐文档版本**记录（见 `SKILL.md`《来源与验证》）。
 
+## v0.4.0 — 2026-10-07
+
+### 对标 `alikon-art/DeterminFlow` 后的定向迭代（批 1）
+
+> 对标结论见 `reports/audits/2026-10-07-determinflow-benchmark-and-v040-proposal.md`。
+> 原则：**不引入运行时** —— 它的每条机制，我们都用「契约 + 断言 + 校验器」表达同等语义。
+
+**新增：行为评估集（T1）** —— 此前 19 项断言只查**文档自洽**，查不出「技能被使用时会不会
+把『启动了』说成『完成了』」。新增 `evals/behaviour.json`（**7 条**，含 **1 条反例**），
+每条 = `prompt` + `expected` + **可判定的 `expectations[]`**；新增断言 **`E1`** 校验其结构完备
+（≥6 条 / 每条 4 段 / ≥2 条判据 / 含反例）。**断言总数 19 → 20**。
+
+**新增：编号与引用完整性（T7）** —— 依据上游事实（`chapters` 以**数字 id** 标识、以 **order** 排序）：
+- `chapters.id` 用字符串代号（如 `ep30`）→ **ERROR**；`order` 非整数或重复 → **ERROR**
+- 外键悬空且**未登记** → **ERROR**；已在旁车 `unresolvedRefs` 登记 → **WARN**
+- 契约：`contracts/A-longform.md` **§8**（依据「**缺失 ≠ 空**」：未解析引用必须显式留痕）
+- 直击历史问题：长铗传 chapters 只到 ep30 却 FK 引用到 ep90
+
+**新增：证据门槛（T2）** —— `evidenceGrade` 闭集 · `contentHash` 形态 · `sources` 元素须含来源标记 ·
+**有记录必须有来源**（`recordCount>0` 且 `sources` 空时**必须用 `notes` 显式声明原因**；
+既无 `sources` 也无 `notes` = **静默缺失 → ERROR**）。
+`contracts/S-data-envelope.md` §3 补充**实测的两种合规 sources 形态**。契约：`SKILL.md` §六 第 10 条。
+
+**新增：发布清单显式化（T6）** —— `COMPAT.md` **§7** 声明计入/排除项与理由
+（`.gitattributes`/`.gitignore` 因是 dotfile；**`skill-card.md` 由服务端生成、不进文件包**）；
+发布前跑 `generated/sf_release_manifest_k7.py` 做**声明 vs 实测**集合校验。
+
+**新增：三层副本树清单（T5）** —— 回写工具升级为逐文件 `sha256` + **基线三方判定**：
+本地领先才写；**对方改动/双方都改 = 冲突必停**（退出 2 + 备份），**绝不静默覆盖**。契约：`COMPAT.md` §6。
+
+#### ⚠️ 两次被真实参照物纠正（如实记录）
+初版 T2 按**契约示例**写「`sources` 必须非空」，实测**把两个真实产物全判错**：
+① 广陵散 5 个块 `sources: []` 但**已用 `notes` 显式声明**（`INFERRED`）→ 产物对、断言错；
+② 长铗传的形态是 `{key,evidence,sources:[...]}`，与示例 `{md,revision,grade}` 不同。
+→ 定稿规则：**ERROR 只留给「有记录 + 无 sources + 无 notes」的静默缺失**。
+**教训**：断言必须先对**真实参照物**验证（METHOD 律 4）。
+
+#### 验证
+- T7/T2 反例自测 **9/9** · E1 反例自测 **5/5** · T5 triage 自测 **8/8**
+- 真实产物：广陵散 PASS(0 err / 5 说明性 WARN) · 长铗传 v0.3.1 PASS(0 err / 41 warn)
+- 技能自检器 PASS（20 项）
+
 ## v0.3.3 — 2026-10-07
 
 ### 大扫除（**只清理、不加功能**；用户指定范围：死代码 / 重复逻辑）

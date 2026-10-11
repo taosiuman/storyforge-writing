@@ -75,7 +75,7 @@ MIN_HEADINGS = 3
 
 
 def read(p):
-    with io.open(p, encoding="utf-8", errors="replace") as fh:
+    with io.open(p, encoding="utf-8-sig", errors="replace") as fh:
         return fh.read()
 
 
@@ -453,6 +453,45 @@ def main(argv=None):
         rep.add("K1", "体积预算（SKILL.md ≤24KB 且 contracts 总量 ≥20KB）", WARN,
                 size <= 24 * 1024 and ctotal >= 20 * 1024,
                 "SKILL.md=%.1fKB；contracts 合计=%.1fKB" % (size / 1024, ctotal / 1024))
+
+    # E1（v0.4.0）：行为评估集结构完备（**断言"技能被使用时怎么做"，不是文档自洽**）
+    ev_p = os.path.join(ROOT, "evals", "behaviour.json")
+    e1 = []
+    if not os.path.isfile(ev_p):
+        e1.append("evals/behaviour.json 缺失（行为评估集是 v0.4.0 起的交付项）")
+    else:
+        try:
+            ev = json.loads(read(ev_p))
+        except Exception as e:  # noqa: BLE001
+            ev = None
+            e1.append("evals/behaviour.json 不是合法 JSON：%s" % e)
+        if not isinstance(ev, dict):
+            e1.append("evals/behaviour.json 顶层必须是 JSON 对象，得到 %s"
+                      % type(ev).__name__)
+        else:
+            items = ev.get("evals") or []
+            if not isinstance(items, list):
+                e1.append("evals 字段必须是 list")
+                items = []
+            if len(items) < 6:
+                e1.append("评估条数 %d < 6" % len(items))
+            for it in items:
+                if not isinstance(it, dict):
+                    e1.append("存在非对象条目")
+                    continue
+                i = it.get("id")
+                for k in ("id", "prompt", "expected", "expectations"):
+                    if not it.get(k):
+                        e1.append("eval#%s 缺 %s" % (i, k))
+                ex = it.get("expectations")
+                if not isinstance(ex, list) or len(ex) < 2:
+                    e1.append("eval#%s 的 expectations 少于 2 条（判据不可判定）" % i)
+                elif any(not isinstance(x, str) or len(x.strip()) < 8 for x in ex):  # L5：判据须实质（≥8 字）
+                    e1.append("eval#%s 的 expectations 含空项或过短（<8 字，不可判定）" % i)
+            if items and not any(isinstance(it, dict) and it.get("counter_example") for it in items):
+                e1.append("缺反例（至少 1 条 counter_example=true）")
+    rep.add("E1", "行为评估集结构完备（≥6 条 · 每条 4 段 · ≥2 条判据 · 含反例）", FAIL, not e1,
+            "；".join(e1[:4]) if e1 else "结构完备（%d 条）" % len((ev or {}).get("evals", [])))
 
     # V2：版本与断言数的「当前态」声明必须自洽（根治 v0.2.1→v0.2.2 那种四处数字互不一致）
     #     注意：本断言计入总数，故 total = 已登记项 + 1（自身）。
