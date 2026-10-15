@@ -12,7 +12,7 @@
 | 版本基线 git 仓库 | **本工作副本与原件目录都不是 git checkout**（无 `.git`），故差异以**快照对比**方式产出；**发布仓库另存**：`github.com/taosiuman/storyforge-writing`（发布动作走 `publish/` 独立 clone） |
 | 上游来源 | `github.com/yuanbw2025/storyforge` → 本地主基线 `H:\storyforge-main`；辅助来源 `H:\StoryForge-master` |
 | 原始版本 | v0.1.0（`source_version_baseline: 2026-09-27 (…v1.7.0)`，**已过期**） |
-| 当前版本 | **v0.4.0** |
+| 当前版本 | **v0.5.0** |
 
 ## 2. 基线判定（依据 `REV-20261005-015`）
 
@@ -36,18 +36,20 @@
 | 契约加厚 | `A-longform.md`：节点模式**字段闭集**（9 项）+ 图执行前 5 项检查 + **跨模式验收 5 条**；长铗传 70→**90 集**、`scripts/act1-4`→`episode-01..04` | `REV-20261005-016` #5；`REV-20261005-015` #3 |
 | 契约加厚 | `A-interactive.md`：补 `AdventureContentV2` **八能力** + 唯一权威写入 `commitAdventureAction`/`commitAdventureNarrativeChoice` + `text-adventure-production/` 入口 | `REV-20261005-015` #4 |
 | 来源标注 | `C-post.md` / `B-motion-drama.md` / `SKILL.md`：凡「达芬奇」相关内容一律标注为**环境来源（`INFERRED`）**，非源仓库基线（源仓库 0 命中） | `REV-20261005-015` #5 |
-| 机制 | 新增 `scripts/check_consistency.py`（**14 项断言**，含路由↔契约集合一致性、术语一致性、来源标注、契约锚点）—— 断言数轨迹：v0.2.0 = 14 → v0.2.1 +`C4` = 15 → v0.2.2 +`L2` +`V2` = 17 → v0.3.0 +`X1` +`X2` = **20（现行）** | 同 seedancer 模式 |
+| 机制 | 新增 `scripts/check_consistency.py`（**14 项断言**，含路由↔契约集合一致性、术语一致性、来源标注、契约锚点）—— 断言数轨迹：v0.2.0 = 14 → v0.2.1 +`C4` = 15 → v0.2.2 +`L2` +`V2` = 17 → v0.3.0 +`X1` +`X2` = 19 → v0.4.0 +`E1` = 20 → v0.5.0 +`D1` = **21（现行）** | 同 seedancer 模式 |
 | 横切参考 | 新增 `references/schema-tables.md`（机械生成自上游 `src/lib/db/schema.ts` + `src/lib/types/*.ts`；123 张表**完整** store 规格 + 当时 21 张重点表 TS 接口 —— **该 21 表详情已于 v0.3.3 去重**，见下表）。v0.2.2 由独立复审驱动**重生成**：修正 11 处「未找到同名接口」误判、去除 §2 的 110 字符静默截断 | 2026-10-06 实测 |
 | 横切参考 | 新增 `references/field-registry.md`（机械生成自上游 `src/lib/registry/field-registry.ts` + `adoption-schema.ts`）：**64 张表 / 528 项可写字段** + 25 项「AI 生成启用」子集 + **53 张集合表**写回策略（identity/去重/必需/盖章/ownerFrom）。补上 SKILL.md「三个单一事实源」中"AI 能写什么"此前只有抽象描述、无逐表清单的缺口 | 2026-10-06 实测 |
 | **产物级校验（v0.3.1）** | 新增 `scripts/check_framework_artifact.py`（**由电影大师在长铗传 v0.3.0 → v0.3.1 实战修复中编写并验证**）：校验生成的 framework.json 是否符合契约 —— **6 类违规**（FK 字段类型 / 必需字段 `id`+`projectId` / 枚举闭集 / 顶层结构无 `version` / 旁车 `blockProvenance` 必须是 list / `context-manifest.json` 存在性）+ FK 悬挂与 null 警告。**与技能自检器分工**：`check_consistency.py` 校验**技能包文档自身**（20 项），本校验器校验**产物** | `REV-20261007-030`（实战驱动）|
 | **大扫除（v0.3.3）** | **只清理、不加功能**（用户指定范围）：① 删两脚本无用的 `from __future__ import annotations`；② 删 `scripts/__pycache__`；③ 术语统一（`SKILL.md` / `C-post.md` 的旧称「漫剧前期」→「漫剧素材前期」）；④ 去过时表述 4 处（`COMPAT` §3 行、`S-data-envelope` §6 空转项、`README` 已知限制、`SKILL` 子契约列表）；⑤ **`A1` 锚点去耦合**（`待实测` → `精确键集`，避免清理该词时假红）；⑥ **产物校验器表名来源改 §2 单源**（原全文标题扫描 ⇒ 任何 `### 非表名` 都被当合法表 = **假 PASS**）；⑦ **去重**：`README` 路由表/基线表/校验命令（→ 指向 `SKILL` §一/来源与验证、`COMPAT` §4）、`schema-tables.md` §1（21 表详情 → 空存根，内容由 §2 + §4 覆盖，**-15.1 KB**）；⑧ git 仓库措辞澄清（工作副本无 `.git`，发布仓库另存） | 本轮大扫除扫描 + `REV` 复审 |
+| **校验器 v4 + 文档瘦身（v0.5.0）** | ① 产物校验器重写：问题以 code 结构化产出；**字段闭集**（记录内 `provenance`/`evidenceGrade` = ERROR，未知字段 WARN/`--strict` ERROR）；**证据复算**（`sf-c14n-v1` 哈希 / `recordCount` / 旁车表双向对齐 / `--sources-root` 验存）；`continuityHandoff` 去重复报错；新增 `planReconciliation` 校验；`context-manifest.json` 结构校验；旁车按 `<stem>` 配对 ② 新增 `scripts/sf_hash.py` `scripts/make_sidecar.py` `examples/minimal/` `tests/run_tests.py` + CI ③ 契约更正：`A-characters` §1 枚举释义、`A-longform` 只读表与章节顺序、`S-data-envelope` §3.1/§3.2 ④ `SKILL.md` 21→14KB，环境约定移入 `references/local-environment.md` ⑤ 自检 +`D1`、`K1` 去下限 | 本轮全面评估（对抗测试复现：多余键 / 伪造哈希 / 错误 recordCount 均曾 PASS） |
 | 契约澄清（v0.3.1） | ① `field-registry.md` §4 新增「**只读表**」章节（`temporalFacts` / `narrativeSummaryNodes` 无 FIELD_REGISTRY 条目 —— 系统生成，AI 不写）；② `S-data-envelope.md` §3 明确**旁车文件结构**（`blockProvenance` 必须 list + 5 字段齐备 + `contentHash` 建议 sha256）| 电影大师 `AUDIT-AND-FIX-REPORT.md` §4 |
 
 ## 4. 验收
 
 ```bash
-python scripts/check_consistency.py     # 技能包自检（19 项）；期望：RESULT: PASS (0 fail, 0 warn)
-python scripts/check_framework_artifact.py <framework.json>   # 产物校验；期望：TOTAL ERRORS: 0
+python scripts/check_consistency.py     # 技能包自检（21 项）；期望：RESULT: PASS (0 fail, 0 warn)
+python scripts/check_framework_artifact.py --strict <framework.json>   # 产物校验；期望：TOTAL ERRORS: 0
+python tests/run_tests.py               # 回归（金样例 + 反例）；期望：RESULT: N/N passed
 ```
 
 记录：`generated/storyforge_consistency_p3*.out`（父仓库）。
@@ -75,6 +77,7 @@ python scripts/check_framework_artifact.py <framework.json>   # 产物校验；�
 8. **§4 全表字段清单的生成器已缺失**（v0.3.3，如实声明）：`schema-tables.md` §4 是**机械生成**的，但生成器 `work/regen_sec4_fields.py` 已被另一会话的清理**误删且不可恢复**（`INC-20261007-001`）→ **§4 当前无法重生成**：上游若更新，须**先重建生成器**（逻辑：读 `json-export.ts` 的 `ProjectExportData` 取权威「表→类型」映射 + 解析 `src/lib/types/*.ts` 接口/别名，含继承链展开与取值域提取；旧版实现可参考 `generated/gen_schema_tables*.py` 的接口解析部分，但**其写死 21 张重点表、会复活 §1**，不可直接使用）。手改 §4 时由隐藏断言 `X2` 兜底（自述计数 / §4 ⊆ §2）。
 9. **产物校验器的覆盖面边界**（v0.3.1，如实声明）：
    - 它**不**校验"内容是否被编造"（那是证据分级 `OBSERVED`/`INFERRED`/`UNKNOWN` 的职责）；
+     v0.5.0 起它**会**复算 `contentHash`（`sf-c14n-v1`）、核对 `recordCount` 与旁车表集合，并在给出 `--sources-root` 时验证来源文件存在；
    - 它**不**校验 FK 指向的**语义正确性**（只查"该 id 在**全部表的 id 并集**里存在"，不查"这条引用关系对不对"，
      也**不**校验"id 指向的是不是同一张表"）；
    - 它**不**校验枚举映射的**保真度**（如 `protagonist→main` 是否合理，属判断项）；
@@ -92,11 +95,11 @@ python scripts/check_framework_artifact.py <framework.json>   # 产物校验；�
 `.gitattributes` / `.gitignore` / `skill-card.md` 都不在其中 —— 当时**没有显式声明**，
 导致我误判过一次 `card.missing`（见 `REL-20261007-001` §4）。
 
-**计入发布包**（根级 6 个 + `contracts/` `references/` `scripts/` `evals/` 全部）：
+**计入发布包**（根级 6 个 + `contracts/` `references/` `scripts/` `evals/` `examples/` `tests/` 全部）：
 
 ```
 SKILL.md  README.md  COMPAT.md  CHANGELOG.md  LICENSE  NOTICE.md
-contracts/*.md   references/*.md   scripts/*.py   evals/*.json
+contracts/*.md   references/*.md   scripts/*.py   evals/*.json   examples/**   tests/*.py
 ```
 
 **排除项与理由**：
@@ -106,6 +109,7 @@ contracts/*.md   references/*.md   scripts/*.py   evals/*.json
 | `.gitattributes` / `.gitignore` | dotfile；ClawHub 打包路径分量不许以点开头（上游 `skill_marketplace/bundle.py:21`） |
 | `skill-card.md` | **card 由服务端生成**，不参与文件包 —— **包内没有它属正常**，不是缺陷 |
 | `__pycache__/` `*.pyc` | 构建产物 |
+| `.github/` | CI 配置（dotfile 目录，同上理由） |
 
 **发布前必跑**：`python generated/sf_release_manifest_k7.py`
 （按本节规则算出应发集合，与最近实测的线上清单比对；不一致即退出 2，**须先对齐再发布**）。

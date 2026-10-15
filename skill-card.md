@@ -23,12 +23,12 @@ Mitigation: Every block must be labelled `OBSERVED` / `INFERRED` / `UNKNOWN`, ca
 Risk: Real-person likeness, franchise or brand references can create rights issues, and uploading real-person media to external services is a data-protection concern. <br>
 Mitigation: Use original names and generic visual descriptions; do **not** upload real-person media to any external service without the documented consent/retention gate; the skill contains no upload step of its own. <br>
 Risk: The contracts are distilled from upstream documentation and can drift out of date. <br>
-Mitigation: The baseline is recorded per document (with versions), `scripts/check_consistency.py` asserts internal consistency, and known gaps are marked `待实测` (to-be-measured) instead of being guessed. <br>
+Mitigation: The baseline is recorded per document (with versions), `scripts/check_consistency.py` asserts internal consistency, and `scripts/check_framework_artifact.py` recomputes evidence hashes and rejects sidecar fields inside records, and `tests/run_tests.py` keeps a negative case for every rule. Open questions are recorded with how to resolve them instead of being guessed. <br>
 
 ## Reference(s): <br>
 - [Repository](https://github.com/taosiuman/storyforge-writing) <br>
 - [Entry point](SKILL.md) · [Contracts](contracts) <br>
-- [Consistency checker](scripts/check_consistency.py) · [Artifact checker](scripts/check_framework_artifact.py) · [Known limits](COMPAT.md) <br>
+- [Consistency checker](scripts/check_consistency.py) · [Artifact checker](scripts/check_framework_artifact.py) · [Sidecar generator](scripts/make_sidecar.py) · [Minimal example](examples/minimal) · [Known limits](COMPAT.md) <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [text, markdown, json, guidance] <br>
@@ -37,7 +37,7 @@ Mitigation: The baseline is recorded per document (with versions), `scripts/chec
 **Other Properties Related to Output:** [Candidates only; output is delivered as files and depends on no application runtime, and the JSON it produces is deliberately NOT a backup package (no `version` field).] <br>
 
 ## Skill Version(s): <br>
-0.4.0 <br>
+0.5.0 <br>
 
 ## Ethical Considerations: <br>
 Users should review generated candidates before adopting them, respect third-party rights when referencing real people, franchises or brands, and apply their own data-protection and compliance requirements before uploading any media to external services. <br>

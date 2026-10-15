@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""check_consistency.py — storyforge-writing 一致性检查器（v4，零依赖）
+"""check_consistency.py — storyforge-writing 一致性检查器（v5，零依赖）
+
+v5（v0.5.0）：
+  · D1  新增「产物校验覆盖声明 ↔ 校验器代码一致」：INVARIANTS.md 等文档引用的每个大写问题码
+        都必须在 `check_framework_artifact.py --list-codes` 中存在；当前态文档不得再写过时的「6 类违规」。
+        （v0.4.0 的 INVARIANTS 声称 INV-C-1 / INV-S-2 有机器覆盖，实际校验器不查记录内多余键 —— 文档与代码脱节无人发现。）
+  · K1  去掉「contracts 总量 ≥20KB」下限（体积下限只会奖励写长）；SKILL.md 预算收紧到 ≤16KB（WARN）。
+  · V2  额外核对 COMPAT.md §4 与 INVARIANTS.md 中的「技能包自检 N 项」。
+  · L2  本地前缀增加 `examples/`、`tests/`。
+  合计 21 项断言。
 
 v4 相对 v3 的修复（实测：WSL 原件缺 references/ 却仍被判 PASS = 假阴性）：
   · L2  新增「被引用的本地文件都存在」。v3 的 L1 只认 markdown 链接 `[t](p)`，
@@ -46,7 +55,7 @@ CONTRACT_REF = re.compile(r"contracts[/\\]([A-Za-z0-9_\-]+\.md)")
 # v0.3.0 加固（U5 反例 L2-a/b/c）：接受反斜杠、可选 `./` 前缀、子目录——
 #   `references\x.md` / `./references/x.md` / `references/sub/x.md` 此前会被漏检。
 LOCAL_REF = re.compile(
-    r"(?<![\w/\\])(?:\./)?(?:references|contracts|scripts)[/\\]"
+    r"(?<![\w/\\])(?:\./)?(?:references|contracts|scripts|examples|tests)[/\\]"
     r"[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*\.(?:md|py|json|ya?ml|txt|ts)"
 )
 
@@ -213,7 +222,7 @@ def main(argv=None):
             if not os.path.isfile(os.path.join(ROOT, *relref.split("/"))):
                 missing_ref.append("%s → %s" % (rel, ref))
     rep.add("L2", "被引用的本地文件都存在（含反引号 code span）", FAIL, not missing_ref,
-            "缺失：%s" % "；".join(sorted(set(missing_ref))[:6]) if missing_ref else "全部存在（%d 类前缀）" % 3)
+            "缺失：%s" % "；".join(sorted(set(missing_ref))[:6]) if missing_ref else "全部存在（%d 类前缀）" % 5)
 
     # X1/X2：横切参考的自洽与交叉一致
     #   X1  `field-registry.md` §1 的每张表都必须在 `schema-tables.md` 的表清单里（禁凭空多表）
@@ -450,8 +459,8 @@ def main(argv=None):
     if size > 60 * 1024:
         rep.add("K1", "体积预算", FAIL, False, "SKILL.md=%.1fKB 超过失败线 60KB" % (size / 1024))
     else:
-        rep.add("K1", "体积预算（SKILL.md ≤24KB 且 contracts 总量 ≥20KB）", WARN,
-                size <= 24 * 1024 and ctotal >= 20 * 1024,
+        rep.add("K1", "体积预算（SKILL.md ≤16KB；每次加载都占上下文）", WARN,
+                size <= 16 * 1024,
                 "SKILL.md=%.1fKB；contracts 合计=%.1fKB" % (size / 1024, ctotal / 1024))
 
     # E1（v0.4.0）：行为评估集结构完备（**断言"技能被使用时怎么做"，不是文档自洽**）
@@ -493,6 +502,38 @@ def main(argv=None):
     rep.add("E1", "行为评估集结构完备（≥6 条 · 每条 4 段 · ≥2 条判据 · 含反例）", FAIL, not e1,
             "；".join(e1[:4]) if e1 else "结构完备（%d 条）" % len((ev or {}).get("evals", [])))
 
+    # D1（v0.5.0）：产物校验覆盖声明 ↔ 校验器代码
+    d1 = []
+    chk = os.path.join(ROOT, "scripts", "check_framework_artifact.py")
+    try:
+        import subprocess
+        out = subprocess.run([sys.executable, chk, "--list-codes"], capture_output=True, text=True, timeout=60).stdout
+        codes = {l.split()[0] for l in out.splitlines() if l.strip()}
+    except Exception as e:  # noqa: BLE001
+        codes = set()
+        d1.append("无法运行 --list-codes：%s" % e)
+    if not codes and not d1:
+        d1.append("--list-codes 输出为空")
+    code_re = re.compile(r"`([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(?:_\*)?`")
+    known_non_codes = {"CONTEXT_SOURCES", "FIELD_REGISTRY", "PROJECT_TABLES", "CURRENT_BACKUP_VERSION",
+                       "STORYFORGE_SCHEMA_VERSION", "ADOPTION_EXTENSIONS", "ADOPTION_SCHEMAS",
+                       "STORYFORGE_STORES", "CURRENT_EXPORT_VERSION", "CURRENT_PROJECT_EXPORT_KEYS"}
+    for rel in ("contracts/INVARIANTS.md", "contracts/S-data-envelope.md", "contracts/A-longform.md", "README.md"):
+        p_ = os.path.join(ROOT, rel)
+        if not os.path.isfile(p_):
+            continue
+        for c in sorted(set(code_re.findall(read(p_)))):
+            if c in known_non_codes or c.startswith("INV_"):
+                continue
+            if codes and c not in codes and not any(k.startswith(c) for k in codes):
+                d1.append("%s 引用了校验器中不存在的问题码 `%s`" % (rel, c))
+    for rel in ("SKILL.md", "README.md", "contracts/INVARIANTS.md"):
+        p_ = os.path.join(ROOT, rel)
+        if os.path.isfile(p_) and re.search(r"覆盖\s*\**6\s*类", read(p_)):
+            d1.append("%s 仍写「覆盖 6 类违规」（过时，问题码以 --list-codes 为准）" % rel)
+    rep.add("D1", "产物校验覆盖声明 ↔ 校验器问题码一致", FAIL, not d1,
+            "；".join(d1[:4]) if d1 else "一致（%d 个问题码）" % len(codes))
+
     # V2：版本与断言数的「当前态」声明必须自洽（根治 v0.2.1→v0.2.2 那种四处数字互不一致）
     #     注意：本断言计入总数，故 total = 已登记项 + 1（自身）。
     total = len(rep.items) + 1
@@ -529,6 +570,14 @@ def main(argv=None):
             v2.append("COMPAT.md 当前版本 %s ≠ frontmatter %s" % (mcv.group(1), ver))
         if ("**%d（现行）**" % total) not in ct:
             v2.append("COMPAT.md 未标注现行断言数 %d" % total)
+        for n in re.findall(r"技能包自检[（(，,\s]*(\d+)\s*项", ct):
+            if int(n) != total:
+                v2.append("COMPAT.md「技能包自检 %s 项」≠ 实际 %d" % (n, total))
+    inv_p = os.path.join(ROOT, "contracts", "INVARIANTS.md")
+    if os.path.isfile(inv_p):
+        for n in re.findall(r"技能包自检[（(，,\s]*(\d+)\s*项", read(inv_p)):
+            if int(n) != total:
+                v2.append("INVARIANTS.md「技能包自检 %s 项」≠ 实际 %d" % (n, total))
     rep.add("V2", "版本与断言数的当前态声明自洽", FAIL, not v2,
             "；".join(v2[:4]) if v2 else "一致（v%s / %d 项）" % (ver, total))
     # 自检：V2 必须是**最后一项**，否则 total 的自增假设失效（U5 指出：正常结构下该守卫恒假，
@@ -544,7 +593,7 @@ def main(argv=None):
                          ensure_ascii=False, indent=2))
     else:
         quiet = "--quiet" in argv
-        print("== storyforge-writing 一致性检查 v4")
+        print("== storyforge-writing 一致性检查 v5")
         for i in rep.items:
             if i["ok"] and quiet:
                 continue

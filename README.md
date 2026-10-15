@@ -23,16 +23,19 @@
 
 命令与期望输出见 [`COMPAT.md`](COMPAT.md) §4「验收」（此处不复制，避免两套命令漂移）。
 
-**两个校验器分工不同**（勿混用）：
-- `check_consistency.py` —— 校验**技能包自身**（SKILL.md / contracts / references 的文档一致性）。
-- `check_framework_artifact.py` —— 校验**生成产物**（framework.json 是否符合字段/枚举/外键契约）。
-  覆盖 6 类违规：FK 字段类型（必须 number）/ 必需字段（`id` + `projectId`）/ 枚举闭集 /
-  顶层结构（无 `version` 字段）/ 旁车结构（`blockProvenance` 必须是 list）/ `context-manifest.json` 存在性。
+**三件工具，分工不同**（勿混用）：
+- `scripts/check_consistency.py` —— 校验**技能包自身**（SKILL.md / contracts / references 的文档一致性）。
+- `scripts/check_framework_artifact.py` —— 校验**生成产物**：字段闭集（含旁车字段混入记录）/ 枚举 / 外键与留痕 /
+  章节编号 / 后验原语形状 / 旁车证据**复算**（contentHash · recordCount · 表集合）/ `context-manifest.json` 三态。
+  问题码全集：`--list-codes`；新产物建议加 `--strict`（兼容期 WARN 升为 ERROR）。
+- `scripts/make_sidecar.py` —— 按 `sf-c14n-v1` 生成/刷新旁车（保留已填的 `sources` / `evidenceGrade`）。
 
-20 项断言（摘要，非穷举）：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径（链接）/
+回归测试：`python tests/run_tests.py`（金样例 `examples/minimal/` + 每条规则的反例）；CI 见 `.github/workflows/ci.yml`。
+
+21 项断言（摘要，非穷举）：版本戳 / frontmatter / 基线结构 / 路由表↔契约集合（精确）/ 相对路径（链接）/
 被引用本地文件存在性（含反引号）/ 横切参考交叉一致 / 参考文件自述计数 / 裁剪三态术语 /
 证据分级规则句 / 环境来源逐行标注 / 契约锚点 / 契约实质下限 / 基线自洽 /
-provenance 单源 / 体积预算 / 版本与断言数自洽。
+provenance 单源 / 体积预算 / 问题码引用↔校验器 / 版本与断言数自洽。
 
 ## 三个必须知道的硬事实
 
@@ -60,4 +63,4 @@ provenance 单源 / 体积预算 / 版本与断言数自洽。
 
 ## 版本
 
-v0.4.0 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。
+v0.5.0 —— 详见 [`CHANGELOG.md`](CHANGELOG.md)。

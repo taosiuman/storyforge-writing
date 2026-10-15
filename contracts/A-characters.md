@@ -5,16 +5,24 @@
 
 ## 1. 角色卡字段闭集
 
-| 字段 | 含义 | 生成来源 |
-|---|---|---|
-| name | 角色名 | 项目角色图谱 |
-| roleWeight | 主角/核心/配角权重 | p1-world-characters |
-| moralAxis | 道德轴（正/邪/灰） | 人设 |
-| orderAxis | 叙事顺序轴 | 出场序 |
-| statusEvidenceChapterId | 状态证据章节 | 状态卡回指 |
-| 能力/动机 | 人设核心 | 角色卡正文 |
-| 登场章节 | 首次登场 | 细纲 |
-| 状态: known/mistaken/candidate | 已登场/笔误待修/作者正典 | 前端状态机 |
+> **单一来源**：`references/field-registry.md` 的 `characters` 节（45 项可写字段）。本节只列**最常用**字段与
+> **枚举闭集**；枚举一律写**英文闭集值**（禁中文描述，如"主角·核心"）。v0.4.0 及以前本节的中文释义
+> 与登记表不符（如把 `orderAxis` 写成"叙事顺序轴"），已于 v0.5.0 更正。
+
+| 字段 | 类型 / 闭集 | 含义 | 生成来源 |
+|---|---|---|---|
+| `name` | string | 角色名 | 项目角色图谱 |
+| `roleWeight` | `main` · `secondary` · `npc` · `extra` | 叙事权重（主角 / 重要配角 / NPC / 群演） | 人设 / 角色表 |
+| `moralAxis` | `good` · `neutral` · `evil` | 阵营·道德轴（善 / 中立 / 恶） | 人设 |
+| `orderAxis` | `lawful` · `neutral` · `chaotic` | 阵营·秩序轴（守序 / 中立 / 混乱）—— **不是**出场顺序 | 人设 |
+| `narrativeStatus` | `planned` · `active` · `inactive` · `retired` · `deceased` | 叙事生命周期状态 | 大纲 / 状态卡 |
+| `firstAppearChapterId` / `exitChapterId` | number（FK → `chapters`） | 登场 / 退场章节 | 细纲 |
+| `statusEvidenceChapterId` | number（FK → `chapters`） | 状态证据章节 | 状态卡回指 |
+| `motivation` / `goals` / `fears` / `innerConflict` / `arc` | longtext | 动机 / 目标 / 恐惧 / 内在冲突 / 弧光 | 角色卡正文 |
+| `personality` / `speechStyle` / `habits` / `appearance` | longtext | 性格 / 说话风格 / 习惯 / 外貌 | 角色卡正文 |
+| `abilities` / `powerLevel` | longtext / string | 能力 / 力量等级 | 设定 |
+
+> 出场顺序用 `firstAppearChapterId`（及章节 `order`）表达；不要借用 `orderAxis`。
 
 ## 2. 角色关系（characterRelations）
 

@@ -2,6 +2,60 @@
 
 本项目版本独立于上游 StoryForge 的版本号；上游基线以**逐文档版本**记录（见 `SKILL.md`《来源与验证》）。
 
+## v0.5.0 — 2026-10-15
+
+### 全面评估后的修复：让校验器真的拦得住它声称拦得住的东西
+
+> 起因：对抗测试复现了三类**假 PASS** —— ① 记录里塞 `provenance` / `evidenceGrade` / 编造字段；
+> ② 旁车写 `sha256:deadbeef`、`recordCount: 999`（实际 1 条）、指向不存在的来源；③ 旁车登记的表与主文件对不上。
+> v0.4.0 的 `check_framework_artifact.py` 对三者都输出 `PASS / 0 errors`，而 `INVARIANTS.md` 声称 `INV-C-1` / `INV-S-2` 已有机器覆盖。
+
+**产物校验器 v4**（`scripts/check_framework_artifact.py`）
+- 问题以 `(level, code, field_path, message)` **结构化产出**；`--list-codes` 列出全部 43 个问题码；`--json` schema 升为 `storyforge.artifact-check.v2`。
+- **字段闭集**：记录内 `provenance` / `evidenceGrade` → **ERROR** `SIDECAR_FIELD_IN_RECORD`；不在数据模型（schema-tables §4）的字段 → `FIELD_UNKNOWN`；
+  在模型中但未登记可写 → `FIELD_NOT_WRITABLE`；写只读表 → `TABLE_NOT_WRITABLE`。
+- **证据复算**：按 `sf-c14n-v1` 复算 `contentHash`（声明规范化时不一致 = ERROR）；`recordCount` 必须等于实际条数；
+  旁车表 ↔ 主文件表**双向**对齐；`--sources-root` 下逐个验证来源文件存在。
+- **`--strict`**：所有「兼容期 WARN」（未知字段、未声明规范化的哈希失配、旧形态 manifest、旁车漏表、写只读表）升为 ERROR。
+  **默认不加 `--strict`，历史产物（广陵散 / 长铗传）不会因本次升级突然 FAIL**；新产物建议一律加。
+- 修复：`continuityHandoff` 校验写在逐字段循环里，每多一个字段就重复报一遍（实测 2 个问题报成 12 条）。
+- 新增：`planReconciliation` 五类对账 + Item 证据 + `reviewStatus` 闭集；非 `pending` 却无 `reviewedAt` → `RECONCILIATION_UNCONFIRMED`。
+- 新增：`context-manifest.json` 必须是合法 JSON 对象；`entries[]` 的 `state` 取三态闭集，裁剪项必须写 `reason`。
+- 旁车按 `<stem>.provenance.json` 配对（此前把目录里**所有**旁车套到每个产物上）。
+
+**新增工具与样例**
+- `scripts/sf_hash.py`：规范化哈希单一实现（生成与校验共用）。
+- `scripts/make_sidecar.py`：生成/刷新旁车，保留已填的 `sources` / `evidenceGrade` / `notes`；新表默认 `UNKNOWN` + 空来源（逼作者补证据，不替人编）。
+- `examples/minimal/`：`--strict` 下 0 error / 0 warn 的金样例（主文件 + 旁车 + manifest + 来源 md）。
+- `tests/run_tests.py`：金样例 + **28 个反例**（每个规则至少一个）+ `make_sidecar` 幂等 + 自检；`.github/workflows/ci.yml` 在 push / PR 时运行。
+
+**契约更正**
+- `A-characters.md` §1：枚举释义与 `field-registry.md` 冲突 —— `orderAxis` 是阵营·秩序轴（`lawful/neutral/chaotic`），**不是**出场顺序；
+  `roleWeight` / `moralAxis` / `narrativeStatus` 改为闭集英文值。
+- `A-longform.md`：§2 不再让 AI 写只读表 `temporalFacts` / `narrativeSummaryNodes`；章节顺序理顺（7→8→9→9.1→10）；补定义 `INV-L-6`、新增 `INV-L-7`。
+- `S-data-envelope.md`：新增 §3.1 规范化哈希 `sf-c14n-v1`、§3.2 `context-manifest.json` 结构；新增 `INV-S-6` / `INV-S-7`。
+- `INVARIANTS.md`：覆盖表与真实问题码对齐；`INV-S-4` 不再自相矛盾地写「真实导出样本仍缺」。
+- `field-registry.md` §4：`factId` 不再建议「填 0」（0 会被判悬空）。
+
+**SKILL.md 瘦身（21.0 KB → 13.7 KB）**
+- 版本史、REV 编号、重复的基线说明移出；环境专属约定（本地 `H:\` 路径、`ai-memory`、白名单项目、达芬奇〔环境来源〕规则）移入**可选**的 `references/local-environment.md`。
+- 新增「文件模式」对照表：上游应用内的 `adopt()` / stale / 下游失效在文件交付下分别对应什么。
+- 连续性检查从剧本专用措辞改为通用，并只保留一处。
+- description 补「不用于」边界；路由补「剧本 / 漫剧」易混淆说明。
+
+**技能包自检 v5**（`scripts/check_consistency.py`，20 → **21 项**）
+- 新增 `D1`：文档引用的问题码必须在校验器 `--list-codes` 中存在；当前态文档不得再写过时的「覆盖 6 类违规」。
+- `K1`：去掉「contracts 总量 ≥20KB」下限（体积下限只会奖励写长），SKILL.md 预算收紧到 ≤16KB。
+- `V2`：额外核对 COMPAT §4 / INVARIANTS 中的「技能包自检 N 项」（v0.4.0 的 COMPAT 写 19 项未被发现）。
+- `L2`：本地前缀增加 `examples/`、`tests/`。
+
+**行为评估**：7 → 10 条（新增路由「剧本 ≠ 后期」、字段闭集与旁车、改记录后必须刷新旁车）。
+
+#### 迁移说明
+- 历史产物：默认模式下不会新增 ERROR，但可能新增 WARN（`FIELD_UNKNOWN`、`EVIDENCE_HASH_UNVERIFIABLE`、`MANIFEST_LEGACY` 等）——这是**让偏离可见**，不要求改写历史产物。
+  例外：`recordCount` 与实际不符、旁车登记了主文件没有的表、记录内混入 `provenance` / `evidenceGrade`、`context-manifest.json` 不是合法 JSON 属客观错误，默认即 ERROR。
+- 新产物：`make_sidecar.py --write` → 补 `sources` → `check_framework_artifact.py --strict`。
+
 ## v0.4.0 — 2026-10-07
 
 ### 对标 `alikon-art/DeterminFlow` 后的定向迭代（批 1）

@@ -1,446 +1,545 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""check_framework_artifact.py — storyforge framework 产物级校验器（零依赖）
+"""check_framework_artifact.py — storyforge framework 产物级校验器（零依赖，v4）
 
 规则来源：
-  - references/field-registry.md（字段/类型/枚举）
-  - references/schema-tables.md（§2 全部表索引 123 张）
-  - contracts/S-data-envelope.md（语料结构 / 旁车 / 对齐清单）
+  - references/field-registry.md（AI 可写字段 / 类型 / 枚举）
+  - references/schema-tables.md（§2 全部表索引 = 表名单源；§4 全表字段清单 = 数据模型字段）
+  - contracts/S-data-envelope.md（语料结构 / 旁车 / 规范化哈希 / context-manifest）
+  - contracts/A-longform.md（§8 编号与引用 / §9.1 后验原语形状）
 
 用法：
-  python scripts/check_framework_artifact.py <framework.json> [<framework2.json> ...]
+  python scripts/check_framework_artifact.py [--strict] [--json] [--sources-root DIR] <framework.json> [...]
+  python scripts/check_framework_artifact.py --list-codes
+
+  --strict        「兼容期 WARN」升级为 ERROR（新产物建议一律加 --strict）
+  --sources-root  旁车 sources 中 md/path/file 的解析根目录；给出时逐个验存
+  --json          机读输出（每条问题带稳定 code）
+  --list-codes    列出全部问题码及其默认级别（供文档/断言核对）
 
 退出码：0 = 全部 PASS；1 = 至少一个 FAIL；2 = 用法/环境错误
 
-v1（2026-10-07）：由电影大师在长铗传 v0.3.0 → v0.3.1 修复过程中编写，
-  后由技能开发 agent 提升进技能包。覆盖 6 类契约违规（FK 类型 / 必需字段 /
-  枚举闭集 / 顶层结构 / 旁车结构 / context-manifest）+ FK 悬挂警告。
-v3（2026-10-07，大扫除 P1）：表名来源改为 **§2 单源** —— 原先额外做了一次**全文**
-  标题扫描，任何 `### <反引号>非表名` 都会被当成合法表（**假 PASS**）；且 §2 定位
-  硬编码、标题改形时静默退化。现改为节号/关键词正则定位，找不到 §2 或自述张数
-  不符即报错并退出 2。
+版本轨迹：
+  v1（2026-10-07）6 类契约违规；v3 表名改 §2 单源。
+  v4（v0.5.0）：
+    · 问题以 (level, code, path, message) **结构化产出**（不再靠关键词反推 code）；
+    · **字段闭集**：记录内 `provenance`/`evidenceGrade` → ERROR（SIDECAR_FIELD_IN_RECORD）；
+      未知字段 → WARN（--strict 下 ERROR）；
+    · **证据复算**：按 `sf-c14n-v1` 复算 contentHash、核对 recordCount、旁车表 ↔ 主文件表双向对齐；
+    · `continuityHandoff` 校验移出逐字段循环（v3 每多一个字段就重复报一遍）；新增 `planReconciliation` 校验；
+    · `context-manifest.json` 必须是合法 JSON 对象，`entries[]` 按 §3.2 校验三态；
+    · 旁车按 `<stem>.provenance.json` 配对（不再把目录里所有旁车套到每个产物上）。
 """
 import json
 import os
 import re
 import sys
 
-# 技能包根目录（本脚本在 scripts/ 下，向上找一级）
-SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SKILL_ROOT = os.path.dirname(SCRIPT_DIR)
+sys.path.insert(0, SCRIPT_DIR)
+from sf_hash import CANONICALIZATION, records_by_table, records_hash  # noqa: E402
+
+ERROR, WARN, NOTE = "ERROR", "WARN", "NOTE"
+GRADES = ("OBSERVED", "INFERRED", "UNKNOWN")
+SIDECAR_ONLY_KEYS = ("provenance", "evidenceGrade")
+SYSTEM_FIELDS = {"id", "projectId", "createdAt", "updatedAt"}
+MANIFEST_STATES = ("read", "missing", "omitted", "partial-selection")
+REVIEW_STATUS = ("pending", "confirmed-constraint", "applied-outline", "dismissed")
+
+# code → (默认级别, 说明)。「兼容期」项默认 WARN，--strict 升为 ERROR。
+CODES = {
+    "TOP_LEVEL_VERSION": (ERROR, "顶层含 version（冒充备份包）"),
+    "TOP_LEVEL_BLOCKS": (ERROR, "顶层 blocks 不是 list"),
+    "NOT_OBJECT": (ERROR, "记录/块不是对象"),
+    "TABLE_UNKNOWN": (ERROR, "表名不在 schema-tables.md §2"),
+    "TABLE_NOT_WRITABLE": (WARN, "表在 schema 中但无 FIELD_REGISTRY 登记（只读/系统表，AI 不应写）【兼容期】"),
+    "MISSING_ID": (ERROR, "记录缺整数 id"),
+    "MISSING_PROJECT_ID": (ERROR, "记录缺整数 projectId"),
+    "SIDECAR_FIELD_IN_RECORD": (ERROR, "provenance/evidenceGrade 混入记录（只能在旁车）"),
+    "FIELD_UNKNOWN": (WARN, "字段不在该表的数据模型（§4）中 —— 精确键集下会被拒收【兼容期】"),
+    "FIELD_NOT_WRITABLE": (WARN, "字段在数据模型中但未登记为 AI 可写（运行时 unknown_write_field）【兼容期】"),
+    "ENUM_VIOLATION": (ERROR, "枚举值不在闭集"),
+    "FK_TYPE": (ERROR, "外键不是数字"),
+    "FK_DANGLING": (ERROR, "外键悬空且未在 unresolvedRefs 登记"),
+    "FK_DANGLING_DECLARED": (WARN, "外键悬空但已在 unresolvedRefs 登记"),
+    "FIELD_NULL_OR_EMPTY": (WARN, "字段为 null/空"),
+    "CHAPTER_ID_NOT_INT": (ERROR, "chapters.id 不是整数（代号只能进 title/文件名）"),
+    "CHAPTER_ORDER": (ERROR, "chapters.order 非整数或重复"),
+    "HANDOFF_SHAPE": (ERROR, "continuityHandoff 形状不符 A-longform §9.1"),
+    "RECONCILIATION_SHAPE": (ERROR, "planReconciliation 形状不符 A-longform §9.1"),
+    "RECONCILIATION_UNCONFIRMED": (ERROR, "planReconciliation 已非 pending 却无 reviewedAt（未确认 ≠ 已确认）"),
+    "SIDECAR_MISSING": (ERROR, "context-manifest.json 缺失"),
+    "MANIFEST_INVALID": (ERROR, "context-manifest.json 不是合法 JSON 对象或 entries 形状错误"),
+    "MANIFEST_LEGACY": (WARN, "context-manifest.json 无 entries[]（旧形态，见 S-data-envelope §3.2）【兼容期】"),
+    "PROVENANCE_MISSING": (WARN, "没有可配对的 *.provenance.json"),
+    "PROVENANCE_UNPAIRED": (WARN, "无 <stem>.provenance.json，回退到目录内全部旁车"),
+    "SIDECAR_UNREADABLE": (ERROR, "旁车不可读/非法 JSON"),
+    "SIDECAR_KEY": (WARN, "旁车键名非规范（契约：blockProvenance）"),
+    "SIDECAR_SHAPE": (ERROR, "blockProvenance 不是 list / 项不是对象 / 缺 5 字段"),
+    "SIDECAR_TABLE_ORPHAN": (ERROR, "旁车登记了主文件中不存在的表"),
+    "SIDECAR_TABLE_UNCOVERED": (WARN, "主文件的表在旁车中无 provenance 条目【兼容期】"),
+    "EVIDENCE_GRADE": (ERROR, "evidenceGrade 不在闭集"),
+    "EVIDENCE_NO_HASH": (ERROR, "contentHash 为空"),
+    "EVIDENCE_HASH_FORM": (WARN, "contentHash 非 sha256: 形态且未标注占位算法"),
+    "EVIDENCE_HASH_MISMATCH": (ERROR, "已声明 sf-c14n-v1，但复算哈希不一致"),
+    "EVIDENCE_HASH_UNVERIFIABLE": (WARN, "未声明 hashCanonicalization，且按 sf-c14n-v1 复算不一致 —— 无法复算【兼容期】"),
+    "EVIDENCE_COUNT_MISMATCH": (ERROR, "recordCount 与主文件实际记录数不一致"),
+    "EVIDENCE_SILENT_ABSENT": (ERROR, "有记录但既无 sources 也无 notes（静默缺失）"),
+    "EVIDENCE_ABSENT_DECLARED": (NOTE, "有记录、sources 为空，但 notes 已显式声明原因"),
+    "EVIDENCE_NO_SOURCES": (ERROR, "sources 不是 list"),
+    "EVIDENCE_NO_MARKER": (ERROR, "sources 项缺来源标记（md/path/file/key）"),
+    "EVIDENCE_SOURCE_GRADE": (WARN, "sources 项等级缺省或非闭集"),
+    "EVIDENCE_NESTED": (ERROR, "sources[].sources 不是字符串数组"),
+    "EVIDENCE_SOURCE_MISSING": (ERROR, "--sources-root 下找不到 sources 指向的文件"),
+}
+STRICT_UPGRADE = {c for c, (lv, d) in CODES.items() if "【兼容期】" in d}
+
+
+class Issues:
+    def __init__(self, strict):
+        self.strict, self.items = strict, []
+
+    def add(self, code, path, msg):
+        level = CODES[code][0]
+        if self.strict and code in STRICT_UPGRADE:
+            level = ERROR
+        self.items.append({"level": level, "code": code, "field_path": path, "message": msg})
+
+    def count(self, level):
+        return sum(1 for i in self.items if i["level"] == level)
+
+
+# ---------------------------------------------------------------- 参考文件解析
+def _read(p):
+    with open(p, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def parse_registry():
-    """从 references/field-registry.md 解析每张表的字段规格（字段名 / 类型 / 枚举闭集）。"""
-    reg_path = os.path.join(SKILL_ROOT, "references", "field-registry.md")
-    if not os.path.isfile(reg_path):
-        print(f"错误：找不到 {reg_path}", file=sys.stderr)
+    """field-registry.md §1 → {table: {field: {type, enum}}}。"""
+    p = os.path.join(SKILL_ROOT, "references", "field-registry.md")
+    if not os.path.isfile(p):
         return {}
-    reg = open(reg_path, encoding="utf-8").read()
+    reg = _read(p)
+    sec1 = re.split(r"^## 2\.", reg, flags=re.M)[0]
     spec = {}
-    for s in re.split(r"\n### ", reg):
+    for s in re.split(r"\n### ", sec1):
         m = re.match(r"`([A-Za-z0-9_]+)`", s)
         if not m:
             continue
-        t = m.group(1)
         fields = {}
         for line in s.split("\n"):
             mm = re.match(r"\|\s*`([A-Za-z0-9_]+)`\s*\|\s*`([a-z]+)`\s*\|([^|]*)\|", line)
             if mm:
                 f, ty, vals = mm.group(1), mm.group(2), mm.group(3).strip()
-                # 枚举值用 · 分隔（中文间隔号 U+00B7）
-                ev = [v.strip("` ") for v in vals.split(chr(183))] if vals and vals != chr(8212) else []
+                ev = [v.strip("` ") for v in vals.split("\u00b7")] if vals and vals != "\u2014" else []
                 fields[f] = {"type": ty, "enum": ev}
-        spec[t] = fields
+        spec[m.group(1)] = fields
     return spec
 
 
 def _strip_noise(s):
-    """剥离围栏代码块与 HTML 注释（防正文样例被当作真标题）。"""
     s = re.sub(r"```.*?```", "", s, flags=re.S)
     return re.sub(r"<!--.*?-->", "", s, flags=re.S)
 
 
-def parse_schema_tables():
-    """从 references/schema-tables.md 的 **§2「全部表索引」** 解析全部表名（**单一来源**）。
-
-    **v3（大扫除 P1）修正**：旧版在 §2 表格行之外**又做了一次全文** `### <反引号>表名`
-    标题扫描，两个后果 ——
-      ① 任何形如 `### <反引号>非表名` 的标题都会被当成**合法表名**
-         （实测：注入假标题后产物用该名**不报错** = **假 PASS**）；
-      ② §2 定位用硬编码 `split("## 2.")`，标题改形时**静默退化为全文扫描**。
-    现改为：**§2 单源** + 节号/关键词正则定位 + **找不到即报错**（不静默）；
-    并额外返回标题自述的张数，供调用方核对（"123" 不再是不可验证的宣称）。
-    """
-    st_path = os.path.join(SKILL_ROOT, "references", "schema-tables.md")
-    if not os.path.isfile(st_path):
-        print(f"错误：找不到 {st_path}", file=sys.stderr)
-        return set(), None
-    sc = _strip_noise(open(st_path, encoding="utf-8").read())
-    # 必须**唯一**命中：否则可被"在真 §2 之前插入伪造同名节"旁路
-    # （`REV-20261007-034` M-bypass：取首个匹配 → 伪表名假 PASS、真表名假红）。
-    cands = [mm for mm in re.finditer(r"^##[ \t\u3000]*[2２][ \t\u3000]*[.、．][^\n]*$", sc, re.M)
-             if "全部表索引" in mm.group(0)]
+def _section(text, num_pat, keyword):
+    cands = [m for m in re.finditer(r"^##[ \t\u3000]*" + num_pat + r"[ \t\u3000]*[.、．][^\n]*$", text, re.M)
+             if keyword in m.group(0)]
     if len(cands) != 1:
-        print("错误：schema-tables.md 的「§2 全部表索引」节命中 %d 个（应为 1）—— 表名来源不可信"
-              % len(cands), file=sys.stderr)
-        return set(), None
+        return None, None, len(cands)
     head = cands[0]
-    rest = sc[head.end():]
+    rest = text[head.end():]
     nxt = re.search(r"^##[ \t\u3000]", rest, re.M)
-    sec2 = rest[:nxt.start()] if nxt else rest
+    return head.group(0), (rest[:nxt.start()] if nxt else rest), 1
+
+
+def parse_schema_tables():
+    """返回 (§2 表名集合, §2 自述张数, §4 {table: 字段集合})。§2 必须唯一命中（防伪造同名节旁路）。"""
+    p = os.path.join(SKILL_ROOT, "references", "schema-tables.md")
+    if not os.path.isfile(p):
+        return set(), None, {}
+    raw = _read(p)
+    head, sec2, n = _section(_strip_noise(raw), r"[2２]", "全部表索引")
+    if head is None:
+        print("错误：schema-tables.md「§2 全部表索引」命中 %d 个（应为 1）" % n, file=sys.stderr)
+        return set(), None, {}
     names = set(re.findall(r"^\|\s*`([A-Za-z0-9_]+)`\s*\|\s*`[^`]+`\s*\|\s*$", sec2, re.M))
-    mtxt = re.search(r"（\**(\d+)\s*张", head.group(0))
-    return names, (int(mtxt.group(1)) if mtxt else None)
+    mtxt = re.search(r"（\**(\d+)\s*张", head)
+    # §4 字段清单在 ```text 围栏内，故用**未剥离**的原文定位（标题仍须唯一）
+    model = {}
+    h4, sec4, _ = _section(re.sub(r"<!--.*?-->", "", raw, flags=re.S), r"[4４]", "全表字段清单")
+    if sec4:
+        for chunk in re.split(r"^###[ \t]+", sec4, flags=re.M)[1:]:
+            mt = re.match(r"`([A-Za-z0-9_]+)`", chunk)
+            if not mt:
+                continue
+            fields = set(re.findall(r"`([A-Za-z0-9_]+)\??`:", chunk))
+            if fields:                      # 4 张交叉类型表未解析出字段 → 不纳入闭集判定
+                model[mt.group(1)] = fields
+    return names, (int(mtxt.group(1)) if mtxt else None), model
 
 
 def _is_int(v):
-    """**严格整数**：排除 `bool`（Python `isinstance(True, int)` 为真 ——
-    `REV-20261007-035` L1 实测 `id: true` 会绕过整数门）。"""
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def check(path, spec, schema_tables, unresolved=frozenset()):
-    """校验单个 framework.json，返回 {path, status, tables, errors, warnings}。
+# ---------------------------------------------------------------- 旁车
+def pick_sidecars(path, iss):
+    dirn = os.path.dirname(os.path.abspath(path))
+    stem = os.path.splitext(os.path.basename(path))[0]
+    paired = os.path.join(dirn, stem + ".provenance.json")
+    if os.path.isfile(paired):
+        return [paired]
+    others = sorted(os.path.join(dirn, f) for f in os.listdir(dirn) if f.endswith(".provenance.json"))
+    if others:
+        iss.add("PROVENANCE_UNPAIRED", "", "未找到 %s.provenance.json，回退使用：%s"
+                % (stem, ", ".join(os.path.basename(o) for o in others)))
+    else:
+        iss.add("PROVENANCE_MISSING", "", "provenance sidecar missing")
+    return others
 
-    `unresolved`：旁车 `unresolvedRefs` 登记的 `(table, field, value)` 集合 ——
-    T7（v0.4.0）用它区分「**登记过的**悬空引用」（WARN）与「**未登记的**静默悬空」（ERROR）。
-    """
-    errs, warns = [], []
-    if not os.path.exists(path):
-        return {"path": path, "status": "ERROR", "errors": ["artifact not found"], "warnings": []}
-    
+
+def check_manifest(path, iss):
+    mp = os.path.join(os.path.dirname(os.path.abspath(path)), "context-manifest.json")
+    if not os.path.exists(mp):
+        iss.add("SIDECAR_MISSING", "", "context-manifest.json missing")
+        return
     try:
-        d = json.load(open(path, encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        return {"path": path, "status": "ERROR", "errors": [f"JSON parse error: {e}"], "warnings": []}
-    
-    # 顶层结构：不能有 version 字段（避免冒充备份包）
+        m = json.loads(_read(mp))
+    except (ValueError, OSError) as e:
+        iss.add("MANIFEST_INVALID", "context-manifest", "不是合法 JSON：%s" % e)
+        return
+    if not isinstance(m, dict):
+        iss.add("MANIFEST_INVALID", "context-manifest", "顶层必须是对象，得到 %s" % type(m).__name__)
+        return
+    entries = m.get("entries")
+    if entries is None:
+        iss.add("MANIFEST_LEGACY", "context-manifest", "无 entries[]（读了什么/遗漏什么不可机读）")
+        return
+    if not isinstance(entries, list):
+        iss.add("MANIFEST_INVALID", "context-manifest.entries", "entries 必须是 list")
+        return
+    for i, e in enumerate(entries):
+        p = "context-manifest.entries[%d]" % i
+        if not isinstance(e, dict) or not e.get("source"):
+            iss.add("MANIFEST_INVALID", p, "每项必须是含 source 的对象")
+            continue
+        st = e.get("state")
+        if st not in MANIFEST_STATES:
+            iss.add("MANIFEST_INVALID", p, "state=%r 不在闭集 %s" % (st, "/".join(MANIFEST_STATES)))
+        elif st != "read" and not str(e.get("reason") or "").strip():
+            iss.add("MANIFEST_INVALID", p, "state=%s 必须给出 reason（裁剪必须留证据）" % st)
+
+
+def check_sidecars(path, blocks_by_table, iss, sources_root):
+    unresolved = set()
+    seen_tables = set()
+    for sp in pick_sidecars(path, iss):
+        name = os.path.basename(sp)
+        try:
+            pr = json.loads(_read(sp))
+        except (ValueError, OSError) as e:
+            iss.add("SIDECAR_UNREADABLE", name, "%s unreadable: %s" % (name, e))
+            continue
+        if not isinstance(pr, dict):
+            iss.add("SIDECAR_UNREADABLE", name, "顶层必须是对象")
+            continue
+        for u in (pr.get("unresolvedRefs") or []):
+            if isinstance(u, dict) and {"table", "field", "value", "reason"} <= set(u) \
+                    and str(u.get("reason") or "").strip():
+                unresolved.add((u["table"], u["field"], json.dumps(u["value"])))
+        canon = pr.get("hashCanonicalization")
+        bp = pr.get("blockProvenance")
+        if bp is None:
+            if "blocks" in pr:
+                iss.add("SIDECAR_KEY", name, "sidecar uses non-canonical key blocks (contract: `blockProvenance`)")
+                bp = pr.get("blocks")          # 仍按同形状校验内容（只报偏离，不改历史产物）
+            else:
+                iss.add("SIDECAR_KEY", name, "no `blockProvenance` key (sidecar uses: %s)"
+                        % ",".join(list(pr.keys())[:6]))
+                continue
+        if not isinstance(bp, list):
+            iss.add("SIDECAR_SHAPE", name, "blockProvenance must be a list, got %s" % type(bp).__name__)
+            continue
+        need = {"table", "recordCount", "contentHash", "evidenceGrade", "sources"}
+        for i, it in enumerate(bp):
+            p = "blockProvenance[%d]" % i
+            if not isinstance(it, dict):
+                iss.add("SIDECAR_SHAPE", p, "不是对象")
+                continue
+            miss = sorted(need - set(it))
+            if miss:
+                iss.add("SIDECAR_SHAPE", p, "missing %s" % miss)
+                continue
+            t = it["table"]
+            seen_tables.add(t)
+            if t not in blocks_by_table:
+                iss.add("SIDECAR_TABLE_ORPHAN", p, "table=%r 不在主文件 blocks[] 中" % t)
+                actual = None
+            else:
+                actual = blocks_by_table[t]
+                if it["recordCount"] != len(actual):
+                    iss.add("EVIDENCE_COUNT_MISMATCH", p, "recordCount=%r ≠ 主文件实际 %d 条"
+                            % (it["recordCount"], len(actual)))
+            if it["evidenceGrade"] not in GRADES:
+                iss.add("EVIDENCE_GRADE", p, "evidenceGrade=%r 不在闭集 {OBSERVED,INFERRED,UNKNOWN}"
+                        % (it["evidenceGrade"],))
+            ch = it["contentHash"]
+            if not isinstance(ch, str) or not ch.strip():
+                iss.add("EVIDENCE_NO_HASH", p, "contentHash 为空（证据不可核验）")
+            elif not ch.startswith("sha256:"):
+                if "fnv1a64" not in ch:
+                    iss.add("EVIDENCE_HASH_FORM", p, "contentHash 非 sha256 形态且未标注占位算法：%r" % ch[:24])
+            elif actual is not None:
+                calc = records_hash(actual)
+                if calc != ch:
+                    if canon == CANONICALIZATION:
+                        iss.add("EVIDENCE_HASH_MISMATCH", p, "声明 %s，复算=%s… ≠ 登记=%s…"
+                                % (canon, calc[:19], ch[:19]))
+                    else:
+                        iss.add("EVIDENCE_HASH_UNVERIFIABLE", p, "未声明 hashCanonicalization；按 %s 复算=%s… ≠ 登记=%s…"
+                                % (CANONICALIZATION, calc[:19], ch[:19]))
+            srcs, rc = it["sources"], it["recordCount"]
+            if not isinstance(srcs, list):
+                iss.add("EVIDENCE_NO_SOURCES", p, "sources 必须是 list")
+                continue
+            if rc and not srcs:
+                if str(it.get("notes") or "").strip():
+                    iss.add("EVIDENCE_ABSENT_DECLARED", p, "recordCount=%s 但 sources 为空（notes 已声明原因）" % rc)
+                else:
+                    iss.add("EVIDENCE_SILENT_ABSENT", p, "recordCount=%s 但既无 sources 也无 notes —— 静默缺失" % rc)
+                continue
+            for j, s in enumerate(srcs):
+                sp_ = "%s.sources[%d]" % (p, j)
+                if not isinstance(s, dict):
+                    iss.add("EVIDENCE_NO_MARKER", sp_, "不是对象")
+                    continue
+                files = [s[k] for k in ("md", "path", "file") if s.get(k)]
+                nested = s.get("sources")
+                if not (files or (s.get("key") and isinstance(nested, list) and nested)):
+                    iss.add("EVIDENCE_NO_MARKER", sp_, "缺来源标记（md/path/file/key 任一）")
+                if nested is not None:
+                    if not (isinstance(nested, list) and all(isinstance(x, str) for x in nested)):
+                        iss.add("EVIDENCE_NESTED", sp_, "sources[].sources 必须是字符串数组")
+                    else:
+                        files += nested
+                if (s.get("grade") or s.get("evidence")) not in GRADES:
+                    iss.add("EVIDENCE_SOURCE_GRADE", sp_, "等级缺省或非闭集：%r" % (s.get("grade") or s.get("evidence"),))
+                if sources_root:
+                    for f in files:
+                        if isinstance(f, str) and not os.path.exists(os.path.join(sources_root, f)):
+                            iss.add("EVIDENCE_SOURCE_MISSING", sp_, "%s 不存在于 --sources-root" % f)
+    for t in blocks_by_table:
+        if seen_tables and t not in seen_tables:
+            iss.add("SIDECAR_TABLE_UNCOVERED", t, "表 %s 在旁车中无 provenance 条目" % t)
+    return unresolved
+
+
+# ---------------------------------------------------------------- 后验原语
+def _quotes_ok(q):
+    return isinstance(q, list) and q and all(
+        isinstance(x, dict) and x.get("quote") and _is_int(x.get("startOffset")) and _is_int(x.get("endOffset"))
+        for x in q)
+
+
+def check_handoff(h, p, iss):
+    if not isinstance(h, dict):
+        iss.add("HANDOFF_SHAPE", p, "必须是对象")
+        return
+    need = ("finalScene", "stateChanges", "knowledgeChanges", "commitments", "openLoops",
+            "evidenceQuotes", "sourceTextHash")
+    miss = [k for k in need if k not in h]
+    if miss:
+        iss.add("HANDOFF_SHAPE", p, "缺必需字段 %s（A-longform.md §9.1）" % miss)
+    fs = h.get("finalScene")
+    if "finalScene" in h and not (isinstance(fs, dict) and isinstance(fs.get("activeCharacters"), list)):
+        iss.add("HANDOFF_SHAPE", p + ".finalScene", "必须含 activeCharacters: string[]")
+    for k in ("stateChanges", "knowledgeChanges", "commitments", "openLoops"):
+        if k in h and not isinstance(h[k], list):
+            iss.add("HANDOFF_SHAPE", p + "." + k, "必须是数组")
+    if not _quotes_ok(h.get("evidenceQuotes")):
+        iss.add("HANDOFF_SHAPE", p + ".evidenceQuotes", "必须是非空数组，每项含 quote + startOffset + endOffset")
+
+
+def check_reconciliation(r, p, iss):
+    if not isinstance(r, dict):
+        iss.add("RECONCILIATION_SHAPE", p, "必须是对象")
+        return
+    for k in ("completedGoals", "unfinishedGoals", "deviations", "newConstraints", "nextChapterImpacts"):
+        if k not in r:
+            iss.add("RECONCILIATION_SHAPE", p, "缺必需对账类 %s" % k)
+            continue
+        items = r[k]
+        if not isinstance(items, list):
+            iss.add("RECONCILIATION_SHAPE", p + "." + k, "必须是数组")
+            continue
+        for i, it in enumerate(items):
+            if not (isinstance(it, dict) and str(it.get("text") or "").strip() and _quotes_ok(it.get("evidenceQuotes"))):
+                iss.add("RECONCILIATION_SHAPE", "%s.%s[%d]" % (p, k, i), "Item 须含 text + 非空带偏移 evidenceQuotes")
+    st = r.get("reviewStatus")
+    if st not in REVIEW_STATUS:
+        iss.add("RECONCILIATION_SHAPE", p + ".reviewStatus", "reviewStatus=%r 不在闭集 %s" % (st, "/".join(REVIEW_STATUS)))
+    elif st != "pending" and not r.get("reviewedAt"):
+        iss.add("RECONCILIATION_UNCONFIRMED", p + ".reviewStatus", "reviewStatus=%s 但无 reviewedAt —— 语料生成时须起于 pending" % st)
+
+
+# ---------------------------------------------------------------- 主体
+def check(path, spec, schema_tables, model, strict=False, sources_root=None):
+    iss = Issues(strict)
+    try:
+        d = json.loads(_read(path))
+    except (ValueError, OSError) as e:
+        iss.add("TOP_LEVEL_BLOCKS", "", "JSON parse error: %s" % e)
+        return iss, 0
+    if not isinstance(d, dict):
+        iss.add("TOP_LEVEL_BLOCKS", "", "顶层必须是对象")
+        return iss, 0
     if "version" in d:
-        errs.append("top-level `version` must NOT be present (would mimic a backup package)")
-    
-    # 顶层结构：blocks 必须是 list
+        iss.add("TOP_LEVEL_VERSION", "version", "top-level `version` must NOT be present (would mimic a backup package)")
     blocks = d.get("blocks")
     if not isinstance(blocks, list):
-        errs.append("top-level `blocks` must be a list, got %s" % type(blocks).__name__)
+        iss.add("TOP_LEVEL_BLOCKS", "blocks", "top-level `blocks` must be a list, got %s" % type(blocks).__name__)
         blocks = []
-    
-    # 第一遍：收集所有表的 id 集合（用于 FK 悬挂检查）
-    ids_by_table = {}
-    for b in blocks:
-        ids_by_table[b.get("table")] = {r.get("id") for r in (b.get("records") or []) if isinstance(r, dict)}
-    all_ids = set().union(*ids_by_table.values()) if ids_by_table else set()
-    
-    # 第二遍：逐表逐记录校验
-    for b in blocks:
-        t = b.get("table")
-        recs = b.get("records") or []
-        
-        # 表存在性
-        if t not in spec:
-            warns.append("table has no FIELD_REGISTRY entry: %s (schema 存在但无可写字段登记)" % t)
-        if t not in schema_tables:
-            errs.append("table not in schema-tables.md index: %s" % t)
-        
-        fs = spec.get(t, {})
-        for i, r in enumerate(recs):
-            if not isinstance(r, dict):
-                errs.append("%s[%d] not an object" % (t, i))
-                continue
-            
-            # T7（v0.4.0）：chapters 的 id 必须是**整数** —— 不得用 `ep30` 这类字符串代号
-            #   （上游 chapters 以数字 id 标识、以 order 排序；见 contracts/A-longform.md §8）
-            if t == "chapters" and isinstance(r.get("id"), str):
-                errs.append("%s[%d] 的 `id` 是字符串 %r —— 章节必须用**整数 id**，代号只能进 title/文件名" % (t, i, r.get("id")))
+    by_table = records_by_table(blocks)
 
-            # 必需字段：id 和 projectId 必须是数字
-            if not _is_int(r.get("id")):
-                errs.append("%s[%d] missing numeric `id`" % (t, i))
+    check_manifest(path, iss)
+    unresolved = check_sidecars(path, by_table, iss, sources_root)
+
+    all_ids = {r.get("id") for recs in by_table.values() for r in recs if isinstance(r, dict)}
+    orders = []
+    for t, recs in by_table.items():
+        if t not in schema_tables:
+            iss.add("TABLE_UNKNOWN", str(t), "table not in schema-tables.md index: %s" % t)
+        elif t not in spec:
+            iss.add("TABLE_NOT_WRITABLE", t, "table has no FIELD_REGISTRY entry: %s（只读/系统表，AI 不应写）" % t)
+        fs, allowed = spec.get(t, {}), model.get(t)
+        for i, r in enumerate(recs):
+            p = "%s[%d]" % (t, i)
+            if not isinstance(r, dict):
+                iss.add("NOT_OBJECT", p, "%s not an object" % p)
+                continue
+            if t == "chapters" and isinstance(r.get("id"), str):
+                iss.add("CHAPTER_ID_NOT_INT", p + ".id", "`id` 是字符串 %r —— 章节必须用整数 id，代号只能进 title/文件名" % r["id"])
+            elif not _is_int(r.get("id")):
+                iss.add("MISSING_ID", p + ".id", "missing numeric `id`")
             if not _is_int(r.get("projectId")):
-                errs.append("%s[%d] missing numeric `projectId`" % (t, i))
-            
-            # 字段类型与枚举闭集
+                iss.add("MISSING_PROJECT_ID", p + ".projectId", "missing numeric `projectId`")
+            for k in r:
+                if k in SIDECAR_ONLY_KEYS:
+                    iss.add("SIDECAR_FIELD_IN_RECORD", "%s.%s" % (p, k), "`%s` 只能放旁车（S-data-envelope §3）" % k)
+                elif k in SYSTEM_FIELDS or k in fs:
+                    continue
+                elif allowed is not None and k not in allowed:
+                    iss.add("FIELD_UNKNOWN", "%s.%s" % (p, k), "字段 `%s` 不在 %s 的数据模型中（schema-tables §4）" % (k, t))
+                elif t in spec:
+                    iss.add("FIELD_NOT_WRITABLE", "%s.%s" % (p, k), "字段 `%s` 未登记为 %s 的 AI 可写字段" % (k, t))
             for f, fsp in fs.items():
                 if f not in r:
                     continue
-                v = r.get(f)
-                if v is None:
-                    continue
-                
-                # 枚举闭集
-                if fsp["type"] == "enum" and v not in fsp["enum"]:
-                    errs.append("%s[%d].%s enum violation: %r not in %s" % (t, i, f, v, fsp["enum"]))
-                
-                # FK 字段必须是数字
-                if fsp["type"] == "number" and (f.endswith("Id") or f.endswith("Ids")) and not isinstance(v, (int, float)):
-                    errs.append("%s[%d].%s must be number, got %s" % (t, i, f, type(v).__name__))
-                
-                # T7（v0.4.0）：FK 悬空 —— **登记过**降 WARN；**未登记 = ERROR**
-                #   依据「缺失 ≠ 空」：未解析的引用必须**显式留痕**（旁车 unresolvedRefs）。
-                if fsp["type"] == "number" and (f.endswith("Id") or f.endswith("Ids")) and _is_int(v) and v not in all_ids:  # L2/F2：判据对齐 + 类型约束
-                    if (t, f, v) in unresolved:
-                        warns.append("%s[%d].%s=%s dangling（旁车 unresolvedRefs 已登记，留痕可见）"
-                                     % (t, i, f, v))
-                    else:
-                        errs.append("%s[%d].%s=%s dangling 且**未登记** —— 须置 null 并在旁车 "
-                                    "unresolvedRefs 留痕（A-LONGFORM §8）" % (t, i, f, v))
-                
-                # T10（v0.4.0）：章节若带 continuityHandoff，按 A-longform.md §9.1 校验其形状
-                if t == "chapters":
-                    h_ = r.get("continuityHandoff")
-                    if isinstance(h_, dict):
-                        need_h = ("finalScene", "stateChanges", "knowledgeChanges", "commitments",
-                                  "openLoops", "evidenceQuotes", "sourceTextHash")
-                        miss_h = [k for k in need_h if k not in h_]
-                        if miss_h:
-                            errs.append("%s[%d].continuityHandoff 缺必需字段 %s（A-longform.md §9.1）"
-                                        % (t, i, miss_h))
-                        eq = h_.get("evidenceQuotes")
-                        if not isinstance(eq, list) or not eq:
-                            errs.append("%s[%d].continuityHandoff.evidenceQuotes 必须是非空数组"
-                                        "（须为带偏移的原文引用，见 §9.1）" % (t, i))
-                        else:
-                            for k2, q in enumerate(eq):
-                                if not (isinstance(q, dict) and q.get("quote")
-                                        and isinstance(q.get("startOffset"), int)
-                                        and isinstance(q.get("endOffset"), int)):
-                                    errs.append("%s[%d].continuityHandoff.evidenceQuotes[%d] 必须含 "
-                                                "quote + startOffset + endOffset" % (t, i, k2))
-                # null/empty 警告
+                v = r[f]
                 if v is None or v == []:
-                    warns.append("%s[%d].%s null/empty (unresolved)" % (t, i, f))
-    
-    # T7（v0.4.0）：chapters.order 若存在必须唯一（章序必须可唯一映射）
-    orders = [r.get("order") for b in blocks if b.get("table") == "chapters"
-              for r in (b.get("records") or []) if isinstance(r, dict)]
-    seen_o, dup_o = set(), set()
-    for o in orders:
+                    iss.add("FIELD_NULL_OR_EMPTY", "%s.%s" % (p, f), "null/empty (unresolved)")
+                    continue
+                if fsp["type"] == "enum" and v not in fsp["enum"]:
+                    iss.add("ENUM_VIOLATION", "%s.%s" % (p, f), "enum violation: %r not in %s" % (v, fsp["enum"]))
+                if fsp["type"] == "number" and f.endswith("Id"):
+                    if not isinstance(v, (int, float)) or isinstance(v, bool):
+                        iss.add("FK_TYPE", "%s.%s" % (p, f), "must be number, got %s" % type(v).__name__)
+                    elif _is_int(v) and v not in all_ids:
+                        if (t, f, json.dumps(v)) in unresolved:
+                            iss.add("FK_DANGLING_DECLARED", "%s.%s" % (p, f), "=%s dangling（unresolvedRefs 已登记）" % v)
+                        else:
+                            iss.add("FK_DANGLING", "%s.%s" % (p, f), "=%s dangling 且未登记 —— 须置 null 并在旁车 unresolvedRefs 留痕（A-longform §8）" % v)
+            if t == "chapters":
+                if r.get("continuityHandoff") is not None:
+                    check_handoff(r["continuityHandoff"], p + ".continuityHandoff", iss)
+                if r.get("planReconciliation") is not None:
+                    check_reconciliation(r["planReconciliation"], p + ".planReconciliation", iss)
+                orders.append((p, r.get("order")))
+    seen, dup = set(), set()
+    for p, o in orders:
         if o is None:
             continue
         if not _is_int(o):
-            errs.append("chapters 的 `order` 必须是整数，得到 %r" % (o,))
-        elif o in seen_o:
-            dup_o.add(o)
+            iss.add("CHAPTER_ORDER", p + ".order", "`order` 必须是整数，得到 %r" % (o,))
+        elif o in seen:
+            dup.add(o)
         else:
-            seen_o.add(o)
-    if dup_o:
-        errs.append("chapters 的 `order` 重复：%s（章序必须唯一）" % sorted(dup_o)[:5])
-
-    res = {"path": path, "tables": len(blocks), "errors": errs, "warnings": warns}
-    res["status"] = "PASS" if not errs else "FAIL"
-    return res
-
-
-def sidecar(path):
-    """校验旁车文件（context-manifest.json + *.provenance.json）。
-
-    **v2 修正（U2 `REV-20261007-030` F1）**：非规范键名（如历史产物用的 `blocks`）
-    由 `NOTE` 升为 **WARN** —— 契约（`S-data-envelope.md` §3）规定的规范键名是 `blockProvenance`；
-    偏离可见但不算 error（否则历史产物一律 FAIL）。
-    """
-    out, unresolved = [], set()
-    dirn = os.path.dirname(path)
-    if not os.path.isdir(dirn):
-        return ["ERROR: sidecar directory not found: %s" % dirn], unresolved
-    
-    # context-manifest.json 必须存在
-    if not os.path.exists(os.path.join(dirn, "context-manifest.json")):
-        out.append("ERROR: context-manifest.json missing")
-    
-    # *.provenance.json 的 blockProvenance 必须是 list
-    provs = [f for f in os.listdir(dirn) if f.endswith(".provenance.json")]
-    if not provs:
-        out.append("WARN: provenance sidecar missing")
-    
-    for f in provs:
-        try:
-            pr = json.load(open(os.path.join(dirn, f), encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as e:
-            out.append(f"ERROR: {f} unreadable: {e}")
-            continue
-        
-        # T7：收集旁车登记的未解析引用（(table, field, value) 三元组）
-        for u in (pr.get("unresolvedRefs") or []):
-            if isinstance(u, dict) and {"table", "field", "value", "reason"} <= set(u) and str(u.get("reason") or "").strip():  # L3：reason 必须非空
-                unresolved.add((u["table"], u["field"], u["value"]))
-
-        bp = pr.get("blockProvenance")
-        if bp is None:
-            others = [k for k in ("blocks",) if k in pr]
-            if others:
-                out.append("WARN: sidecar uses non-canonical key %s (contract: `blockProvenance`) — "
-                           "见 S-data-envelope.md §3" % ",".join(others))
-            else:
-                out.append("WARN: no `blockProvenance` key (sidecar uses: %s)" % ",".join(list(pr.keys())[:6]))
-        elif not isinstance(bp, list):
-            out.append("ERROR: blockProvenance must be a list, got %s" % type(bp).__name__)
-        else:
-            # 每项必须有 5 个字段
-            need = {"table", "recordCount", "contentHash", "evidenceGrade", "sources"}
-            for i, it in enumerate(bp):
-                if not isinstance(it, dict):
-                    out.append("ERROR: blockProvenance[%d] 不是对象" % i)
-                    continue
-                missing = sorted(need - set(it.keys()))
-                if missing:
-                    out.append("ERROR: blockProvenance[%d] missing %s" % (i, missing))
-                    continue
-                # ---- T2（v0.4.0）证据门槛：证据必须**可核验**，不只是一个键名 ----
-                grade = it.get("evidenceGrade")
-                if grade not in ("OBSERVED", "INFERRED", "UNKNOWN"):
-                    out.append("ERROR: blockProvenance[%d].evidenceGrade=%r 不在闭集 "
-                               "{OBSERVED,INFERRED,UNKNOWN}" % (i, grade))
-                ch = it.get("contentHash")
-                if not isinstance(ch, str) or not ch.strip():
-                    out.append("ERROR: blockProvenance[%d].contentHash 为空（证据不可核验）" % i)
-                elif not ch.startswith("sha256:") and "fnv1a64" not in ch:
-                    out.append("WARN: blockProvenance[%d].contentHash 非 sha256 形态且未标注占位算法：%r"
-                               % (i, ch[:24]))
-                srcs = it.get("sources")
-                rc_ = it.get("recordCount")
-                if not isinstance(srcs, list):
-                    out.append("ERROR: blockProvenance[%d].sources 必须是 list" % i)
-                elif rc_ and len(srcs) == 0:
-                    # 「显式 ≠ 空」：有记录却无来源时，**必须显式声明原因**（notes 非空）。
-                    # 实测参照物：广陵散 5 个派生块即以此形式合规（sources=[] + notes 说明 + INFERRED）。
-                    # 只有「有记录 + 无 sources + **无 notes**」才是**静默缺失**。
-                    if (it.get("notes") or "").strip():
-                        out.append("blockProvenance[%d] recordCount=%s 但 sources 为空（notes 已声明原因，按「显式≠空」接受）" % (i, rc_))
-                    else:
-                        out.append("ERROR: blockProvenance[%d] recordCount=%s 但**既无 sources 也无 notes**"
-                                   " —— 静默缺失（见 A-longform.md §8 / S-data-envelope.md §3）" % (i, rc_))
-                else:
-                    for j, s in enumerate(srcs):
-                        if not isinstance(s, dict):
-                            out.append("ERROR: blockProvenance[%d].sources[%d] 不是对象" % (i, j))
-                            continue
-                        # 来源标记：兼容实测到的两种形态 —— {md|path|file, ...} 与 {key, sources:[...]}
-                        if not (any(s.get(k) for k in ("md", "path", "file")) or (s.get("key") and isinstance(s.get("sources"), list) and len(s["sources"]) > 0)):  # L4：key 须带嵌套 sources
-                            out.append("ERROR: blockProvenance[%d].sources[%d] 缺来源标记（md/path/file/key 任一）"
-                                       % (i, j))
-                        lvl = s.get("grade") or s.get("evidence")
-                        if lvl not in ("OBSERVED", "INFERRED", "UNKNOWN"):
-                            out.append("WARN: blockProvenance[%d].sources[%d] 等级缺省或非闭集：%r" % (i, j, lvl))
-                        nested = s.get("sources")
-                        if nested is not None and not (isinstance(nested, list)
-                                                       and all(isinstance(x, str) for x in nested)):
-                            out.append("ERROR: blockProvenance[%d].sources[%d].sources 必须是字符串数组" % (i, j))
-    
-    return out, unresolved
-
-
-ISSUE_RULES = (
-    ("MISSING_ID", "missing numeric `id`"),
-    ("MISSING_PROJECT_ID", "missing numeric `projectId`"),
-    ("CHAPTER_ID_NOT_INT", "章节必须用**整数 id**"),
-    ("CHAPTER_ORDER", "chapters 的 `order`"),
-    ("FK_DANGLING", "dangling"),
-    ("FK_TYPE", "must be number"),
-    ("ENUM_VIOLATION", "enum violation"),
-    ("EVIDENCE_GRADE", "evidenceGrade"),
-    ("EVIDENCE_NO_HASH", "contentHash 为空"),
-    ("EVIDENCE_SILENT_ABSENT", "既无 sources 也无 notes"),
-    ("EVIDENCE_NO_SOURCES", "sources 必须是非空 list"),
-    ("EVIDENCE_ABSENT_DECLARED", "但 sources 为空"),
-    ("FIELD_NULL_OR_EMPTY", "null/empty"),
-    ("EVIDENCE_NO_MARKER", "缺来源标记"),
-    ("EVIDENCE_NESTED", "必须是字符串数组"),
-    ("SIDECAR_KEY", "blockProvenance"),
-    ("SIDECAR_MISSING", "context-manifest.json missing"),
-    ("TABLE_UNKNOWN", "not in schema-tables.md index"),
-    ("TOP_LEVEL_VERSION", "top-level `version`"),
-    ("TOP_LEVEL_BLOCKS", "top-level `blocks`"),
-    ("NOT_OBJECT", "not an object"),
-)
-_PATH_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*\[\d+\](?:\.[A-Za-z0-9_]+)*)")
-
-
-def issue(msg):
-    """把消息归为稳定三元组 `{code, field_path, message}`（T4，v0.4.0）。
-
-    `code` 由**显式关键字规则表**得出：改文案必须同步改规则表，故对既有检查是稳定标识；
-    新增检查若忘登记会落到 `OTHER`（可被回归测出）。
-    """
-    code = "OTHER"
-    for c, kw in ISSUE_RULES:
-        if kw in msg:
-            code = c
-            break
-    m = _PATH_RE.match(msg)
-    return {"code": code, "field_path": m.group(1) if m else "", "message": msg}
+            seen.add(o)
+    if dup:
+        iss.add("CHAPTER_ORDER", "chapters", "`order` 重复：%s（章序必须唯一）" % sorted(dup)[:5])
+    return iss, len(by_table)
 
 
 def main():
-    argv = [a for a in sys.argv[1:] if a != "--json"]
-    want_json = "--json" in sys.argv
-    if not argv:
-        print("用法：python check_framework_artifact.py <framework.json> [<framework2.json> ...]", file=sys.stderr)
+    args, strict, want_json, sources_root = [], False, False, None
+    it = iter(sys.argv[1:])
+    for a in it:
+        if a == "--strict":
+            strict = True
+        elif a == "--json":
+            want_json = True
+        elif a == "--sources-root":
+            sources_root = next(it, None)
+        elif a == "--list-codes":
+            for c, (lv, dsc) in CODES.items():
+                print("%-28s %-5s %s" % (c, lv, dsc))
+            return 0
+        else:
+            args.append(a)
+    if not args:
+        print("用法：python check_framework_artifact.py [--strict] [--json] [--sources-root DIR] <framework.json> [...]",
+              file=sys.stderr)
         return 2
-    
     spec = parse_registry()
-    schema_tables, declared_tables = parse_schema_tables()
-    # T4：--json 模式下，从最早处即抑制人类可读输出（否则污染 JSON）
-    _saved = sys.stdout
-    if want_json:
-        sys.stdout = open(os.devnull, "w")
-    print("registry tables: %d | schema index tables: %d" % (len(spec), len(schema_tables)))
-    # v3（大扫除 P1）：表名来源必须可信 —— 缺失或与 §2 标题自述不符时，产物判定不可依赖。
-    # 自述张数缺失也算不可信：否则删掉标题里的「（N 张）」即可让交叉核对**静默跳过**
-    # （`REV-20261007-034` 弱化项）。
-    if not schema_tables or declared_tables is None or declared_tables != len(schema_tables):
-        print("ERROR: schema-tables.md §2 表名来源不可信（自述 %s 张 / 实际解析 %d 张；自述缺失亦不可信）"
-              "—— 校验未完成" % (declared_tables, len(schema_tables)), file=sys.stderr)
+    schema_tables, declared, model = parse_schema_tables()
+    if not spec or not schema_tables or declared is None or declared != len(schema_tables):
+        print("ERROR: 参考文件不可信（registry=%d 表；schema §2 自述 %s / 实际 %d）—— 校验未完成"
+              % (len(spec), declared, len(schema_tables)), file=sys.stderr)
         return 2
-    
-    # **v2 修正（U4 `REV-20261007-031` #1）**：路径不存在曾抛未捕获 FileNotFoundError，
-    #   且退出码 1 与"业务 FAIL"同码 → 外部无法区分。现归为**环境错误**：友好提示 + 退出码 2。
-    missing_paths = [p for p in argv if not os.path.exists(p)]
-    for mp in missing_paths:
+    missing = [p for p in args if not os.path.isfile(p)]
+    for mp in missing:
         print("ERROR: artifact not found: %s" % mp, file=sys.stderr)
-    
-    total_errors = 0
-    results = []
-    for p in argv:
-        if p in missing_paths:
-            continue
-        sc, unresolved = sidecar(p)          # T7：先取旁车登记，再据此判定悬空引用
-        r = check(p, spec, schema_tables, unresolved)
-        
+    if missing:
+        print("ABORTED: %d path(s) not found — 校验未完成" % len(missing))
+        return 2
+    if sources_root and not os.path.isdir(sources_root):
+        print("ERROR: --sources-root 不是目录：%s" % sources_root, file=sys.stderr)
+        return 2
+
+    results, total = [], 0
+    for p in args:
+        iss, ntab = check(p, spec, schema_tables, model, strict, sources_root)
+        ne = iss.count(ERROR)
+        total += ne
+        results.append({"path": p, "status": "PASS" if ne == 0 else "FAIL", "tables": ntab,
+                        "errors": ne, "warnings": iss.count(WARN), "issues": iss.items})
+    if want_json:
+        print(json.dumps({"schema": "storyforge.artifact-check.v2", "strict": strict,
+                          "hashCanonicalization": CANONICALIZATION,
+                          "registryTables": len(spec), "schemaIndexTables": len(schema_tables),
+                          "modelTables": len(model), "artifacts": results}, ensure_ascii=False, indent=1))
+        return 0 if total == 0 else 1
+    print("registry tables: %d | schema index tables: %d | model tables: %d | strict=%s"
+          % (len(spec), len(schema_tables), len(model), strict))
+    for r in results:
         print("=" * 72)
         print("ARTIFACT:", r["path"])
-        print("STATUS: %s | tables: %s | errors: %d | warnings: %d" % (
-            r["status"], r.get("tables"), len(r["errors"]), len(r["warnings"])))
-        
-        for e in r["errors"][:10]:
-            print("   ERROR ", e)
-        if len(r["errors"]) > 10:
-            print("   ... +%d more" % (len(r["errors"]) - 10))
-        
-        for x in sc:
-            print("   ", x)
-        
-        print("   warnings sample:", r["warnings"][:3])
-        results.append({"path": r["path"], "status": r["status"],
-                        "tables": r.get("tables"),
-                        "errors": [issue(x) for x in r["errors"]],
-                        "warnings": [issue(x) for x in r["warnings"]],
-                        "sidecar": sc})
-        total_errors += len(r["errors"]) + len([x for x in sc if x.startswith("ERROR")])
-    
-    sys.stdout = _saved            # T4：恢复 stdout（此后只输出 JSON 或 TOTAL）
-    if not want_json:
-        print("=" * 72)
-    if missing_paths:
-        # 不打印 TOTAL ERRORS —— 否则 "TOTAL ERRORS: 0" 会被误读为"校验通过"
-        print("ABORTED: %d path(s) not found — 校验未完成" % len(missing_paths))
-        return 2          # 环境错误优先于业务判定（结果不可信）
-    if want_json:
-        print(json.dumps({"schema": "storyforge.artifact-check.v1",
-                          "registryTables": len(spec),
-                          "schemaIndexTables": len(schema_tables),
-                          "artifacts": results}, ensure_ascii=False, indent=1))
-        return 0 if total_errors == 0 else 1
-    print("TOTAL ERRORS:", total_errors)
-    return 0 if total_errors == 0 else 1
+        print("STATUS: %s | tables: %s | errors: %d | warnings: %d" % (r["status"], r["tables"], r["errors"], r["warnings"]))
+        shown = {ERROR: 0, WARN: 0, NOTE: 0}
+        for i in r["issues"]:
+            lim = 30 if i["level"] == ERROR else 10
+            shown[i["level"]] += 1
+            if shown[i["level"]] <= lim:
+                print("   %-5s %-26s %s %s" % (i["level"], i["code"], i["field_path"], i["message"]))
+        for lv, lim in ((ERROR, 30), (WARN, 10), (NOTE, 10)):
+            if shown[lv] > lim:
+                print("   ... +%d more %s（用 --json 查看全部）" % (shown[lv] - lim, lv))
+    print("=" * 72)
+    print("TOTAL ERRORS:", total)
+    return 0 if total == 0 else 1
 
 
 if __name__ == "__main__":

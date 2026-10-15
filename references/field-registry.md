@@ -954,8 +954,8 @@
 | `narrativeSummaryNodes` | 叙事摘要节点 | 由系统自动生成（从大纲/章节聚合），AI 不直接写入 |
 
 **契约矛盾**：`knowledgeLedger.factId` 的 FK 指向 `temporalFacts`，但该表无 FIELD_REGISTRY 条目。这意味着：
-- AI 生成 `knowledgeLedger` 时，`factId` 字段通常留空（null）或填 0
+- AI 生成 `knowledgeLedger` 时，`factId` 字段留空（`null`）—— **不要填 0**（0 会被校验器判为悬空外键）
 - 如果确实需要填写，必须先确认 `temporalFacts` 中存在对应记录（由系统生成）
 - 这是上游 StoryForge 的设计决策，不是技能缺陷
 
-**校验器行为**：`check_framework_artifact.py` 会对这些表发出警告（"table has no FIELD_REGISTRY entry"），但不会报错。
+**校验器行为**：`check_framework_artifact.py` 对写入这些表报 `TABLE_NOT_WRITABLE`（默认 WARN，`--strict` 下 ERROR）。

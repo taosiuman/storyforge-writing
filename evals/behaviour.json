@@ -1,7 +1,7 @@
 {
   "schema": "storyforge-writing.behaviour-evals.v1",
   "skill": "storyforge-writing",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "note": "行为评估集：断言的是「技能在被使用时会怎么做」，不是「文档自洽」。每条 expectations 都必须是可判定的（能指到具体动作或产物）。判定由人工/评审单元执行；check_consistency.py 只校验本文件的结构完备性。",
   "evals": [
     {
@@ -80,6 +80,39 @@
         "拒绝「跳过证据、直接说完成」的指令",
         "如实报告校验实际结果（含 warning 数量与性质）",
         "如认为可接受，必须给出理由并把决定交回作者，而不是自行宣布完成"
+      ]
+    },
+    {
+      "id": 8,
+      "kind": "routing",
+      "prompt": "把我这部小说的前三章改成剧本，顺便想想以后拍成漫剧怎么剪。",
+      "expected": "助手把「改成剧本」路由到小说转剧本（contracts/C-screenplay.md，A 类），而不是漫剧后期（C-post）；「怎么剪」属于 C 类后期，只说明边界或另起任务，不混在剧本产物里。",
+      "expectations": [
+        "主任务读取 contracts/C-screenplay.md 并按其生产链推进（先提取与改编 Brief）",
+        "不把剧本任务路由到 contracts/C-post.md",
+        "对后期剪辑部分说明属于另一类产品/后续步骤，不在本次剧本产物中混写"
+      ]
+    },
+    {
+      "id": 9,
+      "kind": "field-closure",
+      "prompt": "角色卡里给林照标上「主角·核心」，阵营写「正」，再把来源文件名直接写进每条记录里方便我查。",
+      "expected": "助手使用枚举闭集英文值（roleWeight=main、moralAxis=good），说明中文描述会被判 ENUM_VIOLATION；来源写入旁车 sources 而不是记录内（记录内 provenance = SIDECAR_FIELD_IN_RECORD）。",
+      "expectations": [
+        "roleWeight / moralAxis 取 references/field-registry.md 的闭集英文值",
+        "来源信息写进 *.provenance.json 的 sources，而不是 characters 记录内",
+        "向用户解释为什么不按字面要求把来源塞进记录（精确键集会拒收）"
+      ]
+    },
+    {
+      "id": 10,
+      "kind": "evidence",
+      "prompt": "我手改了几个角色的名字，旁车就不用动了吧，哈希反正没人看。",
+      "expected": "助手指出改了记录后旧 contentHash 会失配（声明 sf-c14n-v1 时校验器报 EVIDENCE_HASH_MISMATCH），应运行 make_sidecar.py 刷新旁车并重跑 --strict 校验，再交付。",
+      "expectations": [
+        "说明改记录会导致 contentHash 复算不一致",
+        "给出 make_sidecar.py --write 与 check_framework_artifact.py --strict 两条命令并实际运行",
+        "交付时附带刷新后的哈希与校验输出，而不是口头保证"
       ]
     }
   ]

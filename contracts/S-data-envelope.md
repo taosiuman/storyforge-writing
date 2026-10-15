@@ -1,4 +1,4 @@
-# S-data-envelope — 数据契约与导入/导出（v0.2.0 引入；v0.3.2 修订）
+# S-data-envelope — 数据契约与导入/导出（v0.2.0 引入；v0.5.0 修订：§3.1 规范化哈希 / §3.2 context-manifest）
 
 > 来源（一手核实）：`src/lib/export/json-export.ts`、`src/lib/export/backup-trust.ts`、
 > `src/lib/export/registry-export.ts`、`src/lib/db/schema.ts`、`docs/DATA-GOVERNANCE.md`（v1.8.0）。
@@ -93,11 +93,11 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```jsonc
 {
-  "storyforgeFramework": "0.4.0",     // 本技能版本（非备份版本）
+  "storyforgeFramework": "0.5.0",     // 本技能版本（非备份版本）
   "baseline": { "docs/DATA-GOVERNANCE.md": "v1.8.0", "docs/products/LONGFORM-AND-NODE.md": "v1.6.0" },
   "blocks": [
     { "table": "characters",          // 表名必须 ∈ PROJECT_TABLES 派生清单
-      "records": [ /* 字段闭集见 SKILL.md §二 */ ] }
+      "records": [ /* 字段闭集见 references/field-registry.md */ ] }
   ]
 }
 ```
@@ -110,17 +110,18 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 ```json
 {
-  "storyforgeFramework": "0.4.0",
-  "generatedAt": "2026-10-07",
-  "generator": "电影大师 / storyforge-writing",
+  "storyforgeFramework": "0.5.0",
+  "generatedAt": "2026-10-15",
+  "generator": "storyforge-writing",
   "hashAlgorithm": "sha256",
+  "hashCanonicalization": "sf-c14n-v1",
   "recordsFile": "storyforge-framework.json",
   "baseline": { /* 同主文件 */ },
   "blockProvenance": [
     {
       "table": "characters",
       "recordCount": 41,
-      "contentHash": "sha256:abc123...",
+      "contentHash": "sha256:<按 §3.1 复算>",
       "evidenceGrade": "OBSERVED",
       "sources": [
         {"md": "p1-world-characters.md", "revision": "v1.2", "grade": "OBSERVED"}
@@ -133,7 +134,9 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 **关键约束**：
 - `blockProvenance` 必须是 **list**（不是 dict），每项对应主文件 `blocks[]` 中的一张表
 - 每项必须有 5 个字段：`table` / `recordCount` / `contentHash` / `evidenceGrade` / `sources`
-- `contentHash` 建议用 sha256（非加密占位如 fnv1a64 需标注"应用侧应重算"）
+- `contentHash` 用 sha256，并按 **§3.1** 规范化计算（`make_sidecar.py` 自动生成）；非加密占位如 fnv1a64 需标注"应用侧应重算"
+- `recordCount` 必须等于主文件中该表的实际记录数；旁车登记的表必须在主文件中存在，主文件的每张表都应有一条 provenance
+- 可选 `unresolvedRefs[]`：`{table, field, value, reason}`（`A-longform.md` §8）
 - `sources` 是 list，每项记录来源 + 版本 + 证据等级。**实测存在两种合规形态**（v0.4.0 明确）：
   - 形态 A（`{md|path|file, revision?, grade}`）—— 逐文件来源；
   - 形态 B（`{key, evidence, sources:[字符串]}`）—— 具名来源组 + 其下的文件列表。
@@ -141,6 +144,43 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 - **有记录必须有来源**：`recordCount > 0` 而 `sources` 为空时，必须用 `notes` **显式声明原因**；
   既无 `sources` 也无 `notes` 判 **ERROR**（静默缺失）。空表（`recordCount = 0`）允许无来源。
 - `storyforgeFramework` 填**本技能版本**（非产物版本）—— 示例中的版本号随技能版本更新
+
+### 3.1 规范化哈希 `sf-c14n-v1`（v0.5.0）
+
+**为什么要规定**：只写"用 sha256"等于没规定 —— 键序、空白、`ensure_ascii` 任一不同，哈希就不同，
+**"可复算证据"就无法复算**（v0.4.0 校验器因此只检查形态，`sha256:deadbeef` 也能通过）。
+
+**算法**（实现：`scripts/sf_hash.py`，生成与校验共用同一份代码）：
+
+1. 取主文件 `blocks[]` 中**同一 `table`** 的全部 `records`，按出现顺序拼成一个 list；
+2. `json.dumps(list, ensure_ascii=False, sort_keys=True, separators=(",", ":"))`；
+3. UTF-8 编码后 SHA-256，写作 `sha256:<64 位小写十六进制>`。
+
+**判定**：旁车顶层声明 `"hashCanonicalization": "sf-c14n-v1"` 时，复算不一致 = **ERROR**（`EVIDENCE_HASH_MISMATCH`）；
+未声明（历史产物）且复算不一致 = **WARN**（`EVIDENCE_HASH_UNVERIFIABLE`，`--strict` 下 ERROR）—— 不改写历史产物，只让偏离可见。
+**新产物一律用** `python scripts/make_sidecar.py <framework.json> --write` 生成/刷新旁车。
+
+### 3.2 `context-manifest.json` 结构（v0.5.0）
+
+**为什么要规定**：校验器早就要求该文件存在，但此前**没有任何契约给出形状** —— 存在一个空文件也算通过。
+
+```json
+{
+  "storyforgeFramework": "0.5.0",
+  "generatedAt": "2026-10-15",
+  "entries": [
+    {"source": "settings/premise.md", "state": "read", "revision": "r1", "contentHash": "sha256:..."},
+    {"source": "settings/characters.md", "state": "partial-selection", "reason": "只选入本章出场的 2 名角色"},
+    {"source": "knowledge/", "state": "missing", "reason": "项目内尚无考据库"}
+  ]
+}
+```
+
+- `state` 闭集 = `read` · `missing` · `omitted` · `partial-selection`（后三者即**裁剪三态**，见 `SKILL.md` §二）；
+- 非 `read` 的条目**必须**写 `reason`（裁剪必须留证据）；
+- 非法 JSON / `entries` 形状错误 = ERROR（`MANIFEST_INVALID`）；无 `entries` 的旧形态 = WARN（`MANIFEST_LEGACY`，`--strict` 下 ERROR）。
+
+完整样例：`examples/minimal/`。
 
 > ⚠️ **键名的历史不一致（`REV-20261007-030` F1，如实登记）**
 > （处置纪律见 `SKILL.md` §四 第 7 条「权威值不得擅自修正」）：本契约规定的规范键名是 `blockProvenance`，
@@ -169,7 +209,9 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
 
 - [ ] 语料**不含** `version` 字段（不冒充备份）、**不含**记录外的未知键
 - [ ] 每个 `table` 来自 `PROJECT_TABLES` 派生清单
-- [ ] 每条记录字段不超出闭集
+- [ ] 每条记录字段不超出闭集（`--strict` 下 `FIELD_UNKNOWN` / `FIELD_NOT_WRITABLE` 为 ERROR）
+- [ ] 旁车由 `make_sidecar.py` 生成（声明 `sf-c14n-v1`），`context-manifest.json` 按 §3.2 填写
+- [ ] `check_framework_artifact.py --strict` 0 errors
 - [ ] **provenance 与 evidenceGrade 在旁车文件**，不混入候选记录
 - [x] 交付说明列出未定项与取得方法（**当前：无遗留**，见 §5）
 - [x] 产物以文件交付为终点：**不依赖任何应用的导入 / 运行时**
@@ -186,6 +228,8 @@ export interface ProjectExportData {      // 「完整项目导出数据结构(�
   **显式声明原因**（「显式 ≠ 空」）。
 - `INV-S-4` 若按上游备份格式交付，必须满足**精确键集**（多一键即拒）。
 - `INV-S-5` 悬空引用必须按 `A-longform.md` §8 在 `unresolvedRefs` 留痕。
+- `INV-S-6` 旁车 `contentHash` 可按 §3.1 复算、`recordCount` 与主文件一致、表集合双向对齐。
+- `INV-S-7` `context-manifest.json` 按 §3.2 记录读取与裁剪三态。
 
 **禁止项**
 - 不得把旁车字段塞进 JSON 记录内。

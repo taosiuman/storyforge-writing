@@ -15,7 +15,7 @@
 8. 长程工程：事实、事件、关系、时间线、主支线进度、伏笔、原文、摘要、索引、影响分析
 9. durable 运行：候选、刷新恢复、stale、拒绝/采纳、post-state、下游生效
 
-## 2. 字段 → 语料映射（长铗传为例）
+## 2. 字段 → 语料映射（以长铗传为例；项目目录约定见 `references/local-environment.md`）
 
 | StoryForge 表 | 长铗传来源 md | 生成内容 |
 |---|---|---|
@@ -31,8 +31,8 @@
 | storyTimelineEvents | 剧本时间线 | 天宝十四载末→至德二载 事件序 |
 | stateCards | 角色状态 | 裴行(巡吏→游侠→远走敦煌) 等 |
 | codexEntries | knowledge/*.md | 考据条目（官制/刑狱/游侠/市坊） |
-| temporalFacts / knowledgeLedger | knowledge/*.md | 带来源章节的结构化事实 |
-| narrativeSummaryNodes | 各幕 | 章/卷/全书摘要（可重建） |
+| knowledgeLedger | knowledge/*.md | 角色知识台账（`factId` 指向只读表 `temporalFacts`，通常留 `null`；不要填 `0`，`0` 会被判悬空） |
+| ~~temporalFacts~~ / ~~narrativeSummaryNodes~~ | — | **只读表，AI 不写**（系统从章节/大纲推导，见 `references/field-registry.md` §4）；需要摘要时写 `chapters.summary` |
 
 ## 3. 长篇写作 SOP 细化
 
@@ -85,9 +85,14 @@ allowed writes      允许写入的目标（对应 FIELD_REGISTRY）
 4. 同一动作**无第二套** Prompt、AI 请求、DB 表清单或字段映射；
 5. 非法连线在**调用模型之前**被阻断。
 
-> 验收证据（引用，不代跑）：`R-LONGFORM-*` 系列 + `tests/e2e/longform-integration.spec.ts`、
+> 验收证据（上游，引用不代跑）：`R-LONGFORM-*` 系列 + 上游 `tests/e2e/` 下的 `longform-integration.spec.ts`、
 > `longform-agent-experience.spec.ts`。注意：模拟模型回归**只证明工程流程**，
 > 不证明真实模型的文学质量、整书无人值守生产或在线社区可用性。
+
+## 7. 短篇（子集）
+
+短篇独立创作（INDEPENDENT-CREATION）：故事核 / 角色 / 单线大纲 / 正文；**可显式派生世界草稿或封存世界版本**。
+（v0.1.0 曾写「不提供『封装为世界』完整路径」，与源文档矛盾 —— 「不提供封装为世界」指的是**剧本 / 漫画**等改造类产品，见 `INDEPENDENT-CREATION.md:11`。）
 
 ## 8. 章节编号与引用完整性（v0.4.0）
 
@@ -110,14 +115,14 @@ allowed writes      允许写入的目标（对应 FIELD_REGISTRY）
    > **禁止静默悬空**：既不可解析、又未登记的引用 = **契约违规**。
    > 这对应上游语义「**缺失 ≠ 空**」：缺失必须**显式**，不能表现为一个"看起来正常"的值。
 
-**校验（`scripts/check_framework_artifact.py`，v0.4.0 起）**：
+**校验（`scripts/check_framework_artifact.py`）**：
 
 | 情形 | 判定 |
 | --- | --- |
-| `chapters` 的 `id` 是字符串 | **ERROR** |
-| `chapters` 的 `order` 非整数或重复 | **ERROR** |
-| 外键悬空且**未**登记 | **ERROR** |
-| 外键悬空但**已**登记 `unresolvedRefs` | **WARN**（留痕可见，不阻塞） |
+| `chapters` 的 `id` 是字符串 | **ERROR** `CHAPTER_ID_NOT_INT` |
+| `chapters` 的 `order` 非整数或重复 | **ERROR** `CHAPTER_ORDER` |
+| 外键悬空且**未**登记 | **ERROR** `FK_DANGLING` |
+| 外键悬空但**已**登记 `unresolvedRefs` | **WARN** `FK_DANGLING_DECLARED`（留痕可见，不阻塞） |
 
 ## 9. 章节后验与有界回环（v0.4.0）
 
@@ -144,28 +149,6 @@ allowed writes      允许写入的目标（对应 FIELD_REGISTRY）
    否则连续性状态与最终正文不一致。
 5. **证据形态**：`evidenceQuotes` 必须是**原文引用 + 偏移**（`quote`/`startOffset`/`endOffset`），
    不得只写结论；两者缺一即视为证据不足。
-
-## 7. 短篇（子集）
-
-短篇独立创作（INDEPENDENT-CREATION）：故事核 / 角色 / 单线大纲 / 正文；**可显式派生世界草稿或封存世界版本**。
-（v0.1.0 曾写「不提供『封装为世界』完整路径」，与源文档矛盾 —— 「不提供封装为世界」指的是**剧本 / 漫画**等改造类产品，见 `INDEPENDENT-CREATION.md:11`。）
-
-## 10. 所有权 · 不变量 · 禁止项（v0.4.0）
-
-**所有权**：本技能 owns 长篇产物的**生成顺序、字段闭集与后验纪律**；上游 owns
-`chapters` / `outlineNodes` / `detailedOutlines` / `storyArcs` 等表与节点运行时；**作者** owns 剧情决定与采纳。
-
-**不变量**
-- `INV-L-1` §1 的**九块覆盖范围**必须全部可生成（缺块须显式说明，不得静默省略）。
-- `INV-L-2` `chapters` 的 `id` 为**整数**、`order` 为整数且**唯一**（§8）。
-- `INV-L-3` 任何外键必须可解析，或按 §8 在旁车 `unresolvedRefs` **显式留痕**。
-- `INV-L-4` 每章**后验先于下一章**；`continuityHandoff` / `planReconciliation` 按 §9 产出。
-- `INV-L-5` provenance 与证据分级**只在旁车**（`S-data-envelope.md` §3）。
-
-**禁止项**
-- 不得跳过上游阶段直接产出正文（前置不足须先补上游）。
-- 不得无限回环：打回重写**上界 3 次**，超限转人工。
-- 不得把未确认的 `planReconciliation` 当作已成立（`reviewStatus` 起于 `pending`）。
 
 ### 9.1 字段级结构（v0.4.0；源 `src/lib/types/outline.ts`，逐字对齐）
 
@@ -199,6 +182,25 @@ allowed writes      允许写入的目标（对应 FIELD_REGISTRY）
 
 `Item` = `{ text: string, evidenceQuotes: Array<{quote, startOffset, endOffset}> }` —— **每一项对账都要带原文证据**。
 
-**机器校验**：`check_framework_artifact.py` 在 `chapters` 记录带 `continuityHandoff` 时，
-校验必填 7 项齐备、`evidenceQuotes` 非空且每项含 `quote`/`startOffset`/`endOffset`。
+**机器校验**（`check_framework_artifact.py`，问题码 `HANDOFF_SHAPE` / `RECONCILIATION_SHAPE` / `RECONCILIATION_UNCONFIRMED`）：
+`continuityHandoff` 必填 7 项、`finalScene.activeCharacters` 为数组、`evidenceQuotes` 非空且带偏移；
+`planReconciliation` 五类对账齐备、每个 Item 带原文证据、`reviewStatus` 取闭集且非 `pending` 时必须有 `reviewedAt`。
 
+## 10. 所有权 · 不变量 · 禁止项（v0.4.0）
+
+**所有权**：本技能 owns 长篇产物的**生成顺序、字段闭集与后验纪律**；上游 owns
+`chapters` / `outlineNodes` / `detailedOutlines` / `storyArcs` 等表与节点运行时；**作者** owns 剧情决定与采纳。
+
+**不变量**
+- `INV-L-1` §1 的**九块覆盖范围**必须全部可生成（缺块须显式说明，不得静默省略）。
+- `INV-L-2` `chapters` 的 `id` 为**整数**、`order` 为整数且**唯一**（§8）。
+- `INV-L-3` 任何外键必须可解析，或按 §8 在旁车 `unresolvedRefs` **显式留痕**。
+- `INV-L-4` 每章**后验先于下一章**；`continuityHandoff` / `planReconciliation` 按 §9 产出。
+- `INV-L-5` provenance 与证据分级**只在旁车**（`S-data-envelope.md` §3）。
+- `INV-L-6` 写入的 `continuityHandoff` / `planReconciliation` 必须符合 §9.1 形状；`planReconciliation.reviewStatus` 生成时为 `pending`，非 `pending` 必须带 `reviewedAt`。
+- `INV-L-7` 不写只读表（`temporalFacts` / `narrativeSummaryNodes`，见 §2）。
+
+**禁止项**
+- 不得跳过上游阶段直接产出正文（前置不足须先补上游）。
+- 不得无限回环：打回重写**上界 3 次**，超限转人工。
+- 不得把未确认的 `planReconciliation` 当作已成立（`reviewStatus` 起于 `pending`）。

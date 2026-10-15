@@ -1,0 +1,18 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 技能包自检
+        run: python scripts/check_consistency.py
+      - name: 金样例（--strict）
+        run: python scripts/check_framework_artifact.py --strict --sources-root examples/minimal examples/minimal/storyforge-framework.json
+      - name: 回归测试（正例 + 反例）
+        run: python tests/run_tests.py
