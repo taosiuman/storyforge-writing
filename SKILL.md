@@ -146,6 +146,8 @@ Work 拥有标题/简介/流派/文风；World 拥有编号/版本/来源；禁�
 5. 按字段闭集生成候选语料（枚举取闭集英文值，见 `references/field-registry.md`）
 6. `python scripts/make_sidecar.py <framework.json> --write`，补全每块的 `sources` 与 `evidenceGrade`
 7. `python scripts/check_framework_artifact.py --strict [--sources-root <项目目录>] <framework.json>` → 0 errors
+   （`--sources-root` 只对**像文件**的引用验存；史书卷目 / 作者口述 / 上游代码位置 / 通配简写等非文件凭证只报 NOTE
+   `EVIDENCE_SOURCE_NONPATH`，不算缺陷 —— 详见 `COMPAT.md` §5.10）
 8. 交付：路径 + contentHash + 校验输出摘要 + 未定项；采纳决定交回作者
 9. 修改技能包本身后：`python scripts/check_consistency.py` 与 `python tests/run_tests.py` 均需通过
 
@@ -165,7 +167,7 @@ Work 拥有标题/简介/流派/文风；World 拥有编号/版本/来源；禁�
 
 ## 来源与验证
 
-> **本技能版本**：v0.5.0（2026-10-15）。变更见 `CHANGELOG.md`；技能包自检 `scripts/check_consistency.py`（21 项断言）；
+> **本技能版本**：v0.5.0（2026-10-16）。变更见 `CHANGELOG.md`；技能包自检 `scripts/check_consistency.py`（21 项断言）；
 > 产物校验 `scripts/check_framework_artifact.py`（问题码全集：`--list-codes`）；回归测试 `tests/run_tests.py`。
 
 ### 基线

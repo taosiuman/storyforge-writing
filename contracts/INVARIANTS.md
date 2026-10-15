@@ -39,7 +39,7 @@
 | `INV-CS-3` 生产链严格顺序 | 契约文字 | `C-screenplay.md` §2 |
 | `INV-S-1` 不含 `version` | 产物校验 `TOP_LEVEL_VERSION` | `check_framework_artifact.py` |
 | `INV-S-2` provenance 只在旁车 | 自检 `C4` + 产物校验 `SIDECAR_FIELD_IN_RECORD`（ERROR） | 两者 |
-| `INV-S-3` 有记录必须有来源（显式 ≠ 空） | 产物校验 `EVIDENCE_SILENT_ABSENT` / `EVIDENCE_ABSENT_DECLARED` / `EVIDENCE_SOURCE_MISSING`（`--sources-root`） | `check_framework_artifact.py` |
+| `INV-S-3` 有记录必须有来源（显式 ≠ 空） | 产物校验 `EVIDENCE_SILENT_ABSENT` / `EVIDENCE_ABSENT_DECLARED` / `EVIDENCE_SOURCE_MISSING`（`--sources-root`，仅对像文件的引用）/ `EVIDENCE_SOURCE_NONPATH`（非文件凭证，NOTE） | `check_framework_artifact.py` |
 | `INV-S-4` 精确键集 | 契约 §1.1 + 产物校验 `FIELD_UNKNOWN`（记录级；`project`/`works[]` 信封级键集只在按备份格式交付时适用，本技能不产出） | `S-data-envelope.md` §1.1 |
 | `INV-S-5` 悬空须留痕 | 产物校验 `FK_DANGLING` / `FK_DANGLING_DECLARED` | `check_framework_artifact.py` |
 | `INV-S-6` 证据可复算 | 产物校验 `EVIDENCE_HASH_MISMATCH` / `EVIDENCE_HASH_UNVERIFIABLE` / `EVIDENCE_COUNT_MISMATCH` / `SIDECAR_TABLE_ORPHAN` / `SIDECAR_TABLE_UNCOVERED` | `check_framework_artifact.py` |

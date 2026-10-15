@@ -13,7 +13,8 @@
   python scripts/check_framework_artifact.py --list-codes
 
   --strict        「兼容期 WARN」升级为 ERROR（新产物建议一律加 --strict）
-  --sources-root  旁车 sources 中 md/path/file 的解析根目录；给出时逐个验存
+  --sources-root  旁车 sources 中 md/path/file 的解析根目录；给出时对**像文件的引用**逐个验存
+                   （史书卷目 / 作者口述 / 推导说明 / 通配简写等非文件凭证只报 NOTE，见 `_is_checkable_path`）
   --json          机读输出（每条问题带稳定 code）
   --list-codes    列出全部问题码及其默认级别（供文档/断言核对）
 
@@ -28,7 +29,10 @@
     · **证据复算**：按 `sf-c14n-v1` 复算 contentHash、核对 recordCount、旁车表 ↔ 主文件表双向对齐；
     · `continuityHandoff` 校验移出逐字段循环（v3 每多一个字段就重复报一遍）；新增 `planReconciliation` 校验；
     · `context-manifest.json` 必须是合法 JSON 对象，`entries[]` 按 §3.2 校验三态；
-    · 旁车按 `<stem>.provenance.json` 配对（不再把目录里所有旁车套到每个产物上）。
+    · 旁车按 `<stem>.provenance.json` 配对（不再把目录里所有旁车套到每个产物上）；
+    · **修假红**：`--sources-root` 只对「像文件」的引用验存（`_is_checkable_path`），
+      非文件凭证（史书卷目 / 作者口述 / 上游代码位置 / 通配简写）降为 NOTE `EVIDENCE_SOURCE_NONPATH`
+      —— 实测历史产物被误报 40 + 12 条 ERROR，全部为假红。
 """
 import json
 import os
@@ -91,7 +95,8 @@ CODES = {
     "EVIDENCE_NO_MARKER": (ERROR, "sources 项缺来源标记（md/path/file/key）"),
     "EVIDENCE_SOURCE_GRADE": (WARN, "sources 项等级缺省或非闭集"),
     "EVIDENCE_NESTED": (ERROR, "sources[].sources 不是字符串数组"),
-    "EVIDENCE_SOURCE_MISSING": (ERROR, "--sources-root 下找不到 sources 指向的文件"),
+    "EVIDENCE_SOURCE_MISSING": (ERROR, "--sources-root 下找不到 sources 指向的**文件**"),
+    "EVIDENCE_SOURCE_NONPATH": (NOTE, "sources 项是非文件凭证（卷目/口述/推导/通配），不作文件验存"),
 }
 STRICT_UPGRADE = {c for c, (lv, d) in CODES.items() if "【兼容期】" in d}
 
@@ -183,6 +188,30 @@ def parse_schema_tables():
 
 def _is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+# 旁车 sources 除了「项目内文件」还承载**非文件凭证**：
+#   · 史书卷目        晉書/卷049、三國志/卷19、世說新語/德行
+#   · 作者口述/裁决    作者确认（杜小文 2026-10-06）、作者裁决(四幕为主)
+#   · 上游代码位置     src/lib/types/world-ownership.ts:46 (Work)
+#   · 通配/范围简写    knowledge/*.md、scripts/episode-01..04.md
+#   · 推导/说明        故事逻辑推导、p2/p3
+# 这些按「本目录下的文件」去判存在性必然假红（v0.5.0 实测：长铗传 40 条 / 广陵散 12 条全部误报）。
+# 因此只有**明确长得像文件**的引用才做存在性检查；其余降为 NOTE，既不误报也不静默丢弃。
+_SOURCE_NONPATH_CHARS = ("*", "?", "[", "]", "..", " ", "\t", "（", "）", "(", ")", "、", "，", "；")
+_SOURCE_PATH_EXTS = (".md", ".json", ".ts", ".tsx", ".js", ".jsx", ".yml", ".yaml", ".txt", ".csv", ".html")
+
+
+def _is_checkable_path(s):
+    """True = 该 sources 引用确实指向 --sources-root 下的一个文件。"""
+    if not isinstance(s, str):
+        return False
+    t = s.strip()
+    if not t or any(c in t for c in _SOURCE_NONPATH_CHARS):
+        return False
+    if ":" in t:                       # file.ts:46 / URL / 卷目行号
+        return False
+    return t.lower().endswith(_SOURCE_PATH_EXTS)
 
 
 # ---------------------------------------------------------------- 旁车
@@ -329,7 +358,11 @@ def check_sidecars(path, blocks_by_table, iss, sources_root):
                     iss.add("EVIDENCE_SOURCE_GRADE", sp_, "等级缺省或非闭集：%r" % (s.get("grade") or s.get("evidence"),))
                 if sources_root:
                     for f in files:
-                        if isinstance(f, str) and not os.path.exists(os.path.join(sources_root, f)):
+                        if not isinstance(f, str):
+                            continue
+                        if not _is_checkable_path(f):
+                            iss.add("EVIDENCE_SOURCE_NONPATH", sp_, "非文件凭证，未作 exist 校验：%s" % f)
+                        elif not os.path.exists(os.path.join(sources_root, f)):
                             iss.add("EVIDENCE_SOURCE_MISSING", sp_, "%s 不存在于 --sources-root" % f)
     for t in blocks_by_table:
         if seen_tables and t not in seen_tables:

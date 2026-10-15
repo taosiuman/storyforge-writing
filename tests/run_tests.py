@@ -132,6 +132,34 @@ def _(d):
     s = load(d, SIDE); s["blockProvenance"][0]["sources"][0]["md"] = "settings/ghost.md"; dump(d, SIDE, s)
 
 
+@case("来源非文件凭证（卷目/口述/代码位置/通配）不得误报缺失", "EVIDENCE_SOURCE_NONPATH", "NOTE",
+      flags=("--sources-root", "<D>"), resign_after=False, exact=5)
+def _(d):
+    # 回归 v0.5.0 假红：这 5 类都不是 --sources-root 下的文件，旧逻辑一律报 EVIDENCE_SOURCE_MISSING(ERROR)。
+    # rc 必须为 0 —— 即「一条 ERROR 都没有」，这正是本用例的断言点。
+    s = load(d, SIDE)
+    s["blockProvenance"][0]["sources"] = [
+        {"md": "晉書/卷049", "grade": "OBSERVED"},
+        {"md": "作者确认（杜小文 2026-10-06）", "grade": "OBSERVED"},
+        {"md": "src/lib/types/world-ownership.ts:46 (Work)", "grade": "OBSERVED"},
+        {"md": "knowledge/*.md", "grade": "OBSERVED"},
+        {"md": "scripts/episode-01..04.md", "grade": "OBSERVED"},
+    ]
+    dump(d, SIDE, s)
+
+
+@case("形如文件的引用仍必须验存（不许因修假红而放过）", "EVIDENCE_SOURCE_MISSING",
+      flags=("--sources-root", "<D>"), resign_after=False, exact=1)
+def _(d):
+    # 与上一条配对：修假红不得把「真缺文件」也一并跳过。
+    s = load(d, SIDE)
+    s["blockProvenance"][0]["sources"] = [
+        {"md": "晉書/卷049", "grade": "OBSERVED"},          # 非文件 → 跳过
+        {"md": "settings/really-absent.md", "grade": "OBSERVED"},   # 像文件 → 必须报缺失
+    ]
+    dump(d, SIDE, s)
+
+
 @case("旁车用历史键名 blocks", "SIDECAR_KEY", "WARN", resign_after=False)
 def _(d):
     s = load(d, SIDE); s["blocks"] = s.pop("blockProvenance"); dump(d, SIDE, s)

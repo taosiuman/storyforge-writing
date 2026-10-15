@@ -2,7 +2,7 @@
 
 本项目版本独立于上游 StoryForge 的版本号；上游基线以**逐文档版本**记录（见 `SKILL.md`《来源与验证》）。
 
-## v0.5.0 — 2026-10-15
+## v0.5.0 — 2026-10-16
 
 ### 全面评估后的修复：让校验器真的拦得住它声称拦得住的东西
 
@@ -11,11 +11,11 @@
 > v0.4.0 的 `check_framework_artifact.py` 对三者都输出 `PASS / 0 errors`，而 `INVARIANTS.md` 声称 `INV-C-1` / `INV-S-2` 已有机器覆盖。
 
 **产物校验器 v4**（`scripts/check_framework_artifact.py`）
-- 问题以 `(level, code, field_path, message)` **结构化产出**；`--list-codes` 列出全部 43 个问题码；`--json` schema 升为 `storyforge.artifact-check.v2`。
+- 问题以 `(level, code, field_path, message)` **结构化产出**；`--list-codes` 列出全部 44 个问题码；`--json` schema 升为 `storyforge.artifact-check.v2`。
 - **字段闭集**：记录内 `provenance` / `evidenceGrade` → **ERROR** `SIDECAR_FIELD_IN_RECORD`；不在数据模型（schema-tables §4）的字段 → `FIELD_UNKNOWN`；
   在模型中但未登记可写 → `FIELD_NOT_WRITABLE`；写只读表 → `TABLE_NOT_WRITABLE`。
 - **证据复算**：按 `sf-c14n-v1` 复算 `contentHash`（声明规范化时不一致 = ERROR）；`recordCount` 必须等于实际条数；
-  旁车表 ↔ 主文件表**双向**对齐；`--sources-root` 下逐个验证来源文件存在。
+  旁车表 ↔ 主文件表**双向**对齐；`--sources-root` 下对**像文件**的引用逐个验存（非文件凭证只报 NOTE，见下）。
 - **`--strict`**：所有「兼容期 WARN」（未知字段、未声明规范化的哈希失配、旧形态 manifest、旁车漏表、写只读表）升为 ERROR。
   **默认不加 `--strict`，历史产物（广陵散 / 长铗传）不会因本次升级突然 FAIL**；新产物建议一律加。
 - 修复：`continuityHandoff` 校验写在逐字段循环里，每多一个字段就重复报一遍（实测 2 个问题报成 12 条）。
@@ -23,11 +23,19 @@
 - 新增：`context-manifest.json` 必须是合法 JSON 对象；`entries[]` 的 `state` 取三态闭集，裁剪项必须写 `reason`。
 - 旁车按 `<stem>.provenance.json` 配对（此前把目录里**所有**旁车套到每个产物上）。
 
+**交付前修复（v0.5.0 复核发现）**：`--sources-root` 曾把旁车里的**非文件凭证**当成文件路径去验存 ——
+史书卷目 `晉書/卷049`、作者口述 `作者确认（杜小文 2026-10-06）`、上游代码位置
+`src/lib/types/world-ownership.ts:46 (Work)`、通配/范围简写 `knowledge/*.md` / `episode-01..04.md`、
+推导说明 `故事逻辑推导` —— 实测把**长铗传 29 条、广陵散 12 条**合法引证报成 ERROR。
+现由 `_is_checkable_path()` 判定：只有「无通配 / 无空白 / 无冒号 / 扩展名在白名单」的引用才验存，
+其余的降为 **NOTE** `EVIDENCE_SOURCE_NONPATH`（不误报、也不静默丢弃；`--json` 里可逐条审计）。
+**形如文件的引用照旧验存** —— 修假红不等于放过真缺失（`tests/run_tests.py` 有配对反例）。
+
 **新增工具与样例**
 - `scripts/sf_hash.py`：规范化哈希单一实现（生成与校验共用）。
 - `scripts/make_sidecar.py`：生成/刷新旁车，保留已填的 `sources` / `evidenceGrade` / `notes`；新表默认 `UNKNOWN` + 空来源（逼作者补证据，不替人编）。
 - `examples/minimal/`：`--strict` 下 0 error / 0 warn 的金样例（主文件 + 旁车 + manifest + 来源 md）。
-- `tests/run_tests.py`：金样例 + **28 个反例**（每个规则至少一个）+ `make_sidecar` 幂等 + 自检；`.github/workflows/ci.yml` 在 push / PR 时运行。
+- `tests/run_tests.py`：金样例 + **30 个反例**（每个规则至少一个）+ `make_sidecar` 幂等 + 自检；`.github/workflows/ci.yml` 在 push / PR 时运行。
 
 **契约更正**
 - `A-characters.md` §1：枚举释义与 `field-registry.md` 冲突 —— `orderAxis` 是阵营·秩序轴（`lawful/neutral/chaotic`），**不是**出场顺序；

@@ -41,7 +41,7 @@
 | 横切参考 | 新增 `references/field-registry.md`（机械生成自上游 `src/lib/registry/field-registry.ts` + `adoption-schema.ts`）：**64 张表 / 528 项可写字段** + 25 项「AI 生成启用」子集 + **53 张集合表**写回策略（identity/去重/必需/盖章/ownerFrom）。补上 SKILL.md「三个单一事实源」中"AI 能写什么"此前只有抽象描述、无逐表清单的缺口 | 2026-10-06 实测 |
 | **产物级校验（v0.3.1）** | 新增 `scripts/check_framework_artifact.py`（**由电影大师在长铗传 v0.3.0 → v0.3.1 实战修复中编写并验证**）：校验生成的 framework.json 是否符合契约 —— **6 类违规**（FK 字段类型 / 必需字段 `id`+`projectId` / 枚举闭集 / 顶层结构无 `version` / 旁车 `blockProvenance` 必须是 list / `context-manifest.json` 存在性）+ FK 悬挂与 null 警告。**与技能自检器分工**：`check_consistency.py` 校验**技能包文档自身**（20 项），本校验器校验**产物** | `REV-20261007-030`（实战驱动）|
 | **大扫除（v0.3.3）** | **只清理、不加功能**（用户指定范围）：① 删两脚本无用的 `from __future__ import annotations`；② 删 `scripts/__pycache__`；③ 术语统一（`SKILL.md` / `C-post.md` 的旧称「漫剧前期」→「漫剧素材前期」）；④ 去过时表述 4 处（`COMPAT` §3 行、`S-data-envelope` §6 空转项、`README` 已知限制、`SKILL` 子契约列表）；⑤ **`A1` 锚点去耦合**（`待实测` → `精确键集`，避免清理该词时假红）；⑥ **产物校验器表名来源改 §2 单源**（原全文标题扫描 ⇒ 任何 `### 非表名` 都被当合法表 = **假 PASS**）；⑦ **去重**：`README` 路由表/基线表/校验命令（→ 指向 `SKILL` §一/来源与验证、`COMPAT` §4）、`schema-tables.md` §1（21 表详情 → 空存根，内容由 §2 + §4 覆盖，**-15.1 KB**）；⑧ git 仓库措辞澄清（工作副本无 `.git`，发布仓库另存） | 本轮大扫除扫描 + `REV` 复审 |
-| **校验器 v4 + 文档瘦身（v0.5.0）** | ① 产物校验器重写：问题以 code 结构化产出；**字段闭集**（记录内 `provenance`/`evidenceGrade` = ERROR，未知字段 WARN/`--strict` ERROR）；**证据复算**（`sf-c14n-v1` 哈希 / `recordCount` / 旁车表双向对齐 / `--sources-root` 验存）；`continuityHandoff` 去重复报错；新增 `planReconciliation` 校验；`context-manifest.json` 结构校验；旁车按 `<stem>` 配对 ② 新增 `scripts/sf_hash.py` `scripts/make_sidecar.py` `examples/minimal/` `tests/run_tests.py` + CI ③ 契约更正：`A-characters` §1 枚举释义、`A-longform` 只读表与章节顺序、`S-data-envelope` §3.1/§3.2 ④ `SKILL.md` 21→14KB，环境约定移入 `references/local-environment.md` ⑤ 自检 +`D1`、`K1` 去下限 | 本轮全面评估（对抗测试复现：多余键 / 伪造哈希 / 错误 recordCount 均曾 PASS） |
+| **校验器 v4 + 文档瘦身（v0.5.0）** | ① 产物校验器重写：问题以 code 结构化产出；**字段闭集**（记录内 `provenance`/`evidenceGrade` = ERROR，未知字段 WARN/`--strict` ERROR）；**证据复算**（`sf-c14n-v1` 哈希 / `recordCount` / 旁车表双向对齐 / `--sources-root` 对像文件引用验存）；`continuityHandoff` 去重复报错；新增 `planReconciliation` 校验；`context-manifest.json` 结构校验；旁车按 `<stem>` 配对 ② 新增 `scripts/sf_hash.py` `scripts/make_sidecar.py` `examples/minimal/` `tests/run_tests.py` + CI ③ 契约更正：`A-characters` §1 枚举释义、`A-longform` 只读表与章节顺序、`S-data-envelope` §3.1/§3.2 ④ `SKILL.md` 21→14KB，环境约定移入 `references/local-environment.md` ⑤ 自检 +`D1`、`K1` 去下限 | 本轮全面评估（对抗测试复现：多余键 / 伪造哈希 / 错误 recordCount 均曾 PASS） |
 | 契约澄清（v0.3.1） | ① `field-registry.md` §4 新增「**只读表**」章节（`temporalFacts` / `narrativeSummaryNodes` 无 FIELD_REGISTRY 条目 —— 系统生成，AI 不写）；② `S-data-envelope.md` §3 明确**旁车文件结构**（`blockProvenance` 必须 list + 5 字段齐备 + `contentHash` 建议 sha256）| 电影大师 `AUDIT-AND-FIX-REPORT.md` §4 |
 
 ## 4. 验收
@@ -77,7 +77,8 @@ python tests/run_tests.py               # 回归（金样例 + 反例）；期�
 8. **§4 全表字段清单的生成器已缺失**（v0.3.3，如实声明）：`schema-tables.md` §4 是**机械生成**的，但生成器 `work/regen_sec4_fields.py` 已被另一会话的清理**误删且不可恢复**（`INC-20261007-001`）→ **§4 当前无法重生成**：上游若更新，须**先重建生成器**（逻辑：读 `json-export.ts` 的 `ProjectExportData` 取权威「表→类型」映射 + 解析 `src/lib/types/*.ts` 接口/别名，含继承链展开与取值域提取；旧版实现可参考 `generated/gen_schema_tables*.py` 的接口解析部分，但**其写死 21 张重点表、会复活 §1**，不可直接使用）。手改 §4 时由隐藏断言 `X2` 兜底（自述计数 / §4 ⊆ §2）。
 9. **产物校验器的覆盖面边界**（v0.3.1，如实声明）：
    - 它**不**校验"内容是否被编造"（那是证据分级 `OBSERVED`/`INFERRED`/`UNKNOWN` 的职责）；
-     v0.5.0 起它**会**复算 `contentHash`（`sf-c14n-v1`）、核对 `recordCount` 与旁车表集合，并在给出 `--sources-root` 时验证来源文件存在；
+     v0.5.0 起它**会**复算 `contentHash`（`sf-c14n-v1`）、核对 `recordCount` 与旁车表集合，并在给出 `--sources-root` 时验证来源文件存在（**非文件凭证**如史书卷目 / 作者口述 / 上游代码位置 / 通配简写
+    只报 NOTE `EVIDENCE_SOURCE_NONPATH`，不算缺陷 —— 见 §5.10）；
    - 它**不**校验 FK 指向的**语义正确性**（只查"该 id 在**全部表的 id 并集**里存在"，不查"这条引用关系对不对"，
      也**不**校验"id 指向的是不是同一张表"）；
    - 它**不**校验枚举映射的**保真度**（如 `protagonist→main` 是否合理，属判断项）；
@@ -88,6 +89,16 @@ python tests/run_tests.py               # 回归（金样例 + 反例）；期�
   > **已知不一致（`REV-20261007-030` F1）**：`S-data-envelope.md` §3 规定的旁车键名是 `blockProvenance`，
   > 但**广陵散**的历史旁车用的是 `blocks`。校验器对该键报 WARN 而非 ERROR（不改历史产物）；
   > 新产物应统一用 `blockProvenance`。
+
+10. **`--sources-root` 的语义（v0.5.0 起）**：只对**像文件**的引用验存（无通配 / 无空白 / 无冒号 / 扩展名在白名单）。
+    旁车 `sources` 同时承载**非文件凭证** —— 史书卷目（`晉書/卷049`）、作者口述（`作者确认（…）`）、
+    上游代码位置（`src/lib/types/world-ownership.ts:46`）、通配简写（`knowledge/*.md`）—— 这些只报 NOTE
+    `EVIDENCE_SOURCE_NONPATH`。root 按**项目目录**传（`SKILL.md` 执行清单 7）；传错目录会得到「真缺失」ERROR，
+    这是**正确**行为（实测：长铗传按项目目录 → 0 缺失；按产物子目录 → 19 条缺失）。
+11. **历史产物 `长铗传` 的 2 条真违规（如实登记，不代改）**：`chapters[3]` / `chapters[4]` 的 `planReconciliation`
+    被写成**自由文本字符串**，而 `references/field-registry.md` 规定其类型为 `object`（`A-longform.md` §9.1 要求
+    五类对账 + `reviewStatus`）。v4 校验器如实报 `RECONCILIATION_SHAPE`(ERROR) ×2 —— **这是校验器生效的证据，
+    不是回归**。按治理红线「不改写历史产物」，此处只登记：**新产物必须用对象形态**。
 
 ## 7. 发布清单（v0.4.0 显式声明）
 
